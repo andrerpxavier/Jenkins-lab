@@ -12,9 +12,11 @@ spec:
       labels:
         app: hello
     spec:
+      nodeName: servidor1
       containers:
         - name: nginx
-          image: <SEU_REGISTRO>/hello-nginx:latest
+          image: localhost:5000/hello-nginx
+          imagePullPolicy: Always
           ports:
             - containerPort: 80
 
