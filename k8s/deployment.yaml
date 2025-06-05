@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: nginx
-          image: <SEU_REGISTRO>/hello-nginx:latest
+          image: hello-nginx:latest
           ports:
             - containerPort: 80
 
