@@ -1,61 +1,50 @@
 #!/bin/bash
 set -e
 
-# Função para instalar o Docker se não estiver presente
+# ---------------------------
+# Função para instalar Docker
+# ---------------------------
 instalar_docker() {
   echo "🔍 Docker não encontrado. A iniciar instalação..."
-
   dnf install -y dnf-plugins-core epel-release
-  dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo || {
-    echo "❌ Falha ao adicionar o repositório da Docker."
-    exit 1
-  }
-
-  dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin || {
-    echo "❌ Falha na instalação dos pacotes Docker."
-    exit 1
-  }
-
+  dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+  dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   systemctl enable docker
   systemctl start docker
 
   if ! command -v docker &> /dev/null; then
-    echo "❌ Docker não foi instalado corretamente. Verifica os logs acima."
+    echo "❌ Docker não foi instalado corretamente."
     exit 1
   fi
 
   echo "✅ Docker instalado com sucesso!"
 }
 
-# Verifica se o Docker está instalado
+# ------------------------------
+# Verificação e instalação base
+# ------------------------------
 if ! command -v docker &> /dev/null; then
   instalar_docker
 else
   echo "✅ Docker já está instalado."
 fi
 
-echo "✅ [1/5] Iniciando Docker Registry local..."
+# ---------------------------
+# Jenkins Registry + Imagem
+# ---------------------------
+echo "✅ [1/7] Iniciando Docker Registry local..."
 if docker ps -a --format '{{.Names}}' | grep -Eq '^registry$'; then
-  echo "⚠️  Registry existente encontrado. A remover..."
   docker rm -f registry
 fi
+docker run -d --name registry --restart=always -p 5000:5000 registry:2
 
-docker run -d --name registry --restart=always -p 5000:5000 registry:2 || {
-  echo "⚠️ O registry pode já estar a correr ou ocorreu um erro. Verifica com 'docker ps -a'."
-}
+echo "✅ [2/7] Construindo imagem Jenkins personalizada..."
+docker build -t jenkins-autocontido -f Dockerfile.jenkins .
 
-echo "✅ [2/5] Construindo imagem Jenkins personalizada..."
-docker build -t jenkins-autocontido -f Dockerfile.jenkins . || {
-  echo "❌ Falha ao construir a imagem personalizada do Jenkins."
-  exit 1
-}
-
-echo "✅ [3/5] A iniciar Jenkins com Docker, Git e kubectl..."
-if docker ps -a --format '{{.Names}}' | grep -Eq '^jenkins$'; then
-  echo "⚠️  Jenkins existente encontrado. A remover..."
-  docker rm -f jenkins
-fi
-
+# ---------------------------
+# Jenkins container via Docker
+# ---------------------------
+echo "✅ [3/7] A iniciar Jenkins standalone..."
 docker run -d \
   --name jenkins \
   -u 0 \
@@ -65,19 +54,25 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v ~/.kube:/root/.kube \
   -v /usr/bin/kubectl:/usr/bin/kubectl \
-  jenkins-autocontido || {
-    echo "❌ Falha ao iniciar o container do Jenkins."
-    exit 1
-}
+  jenkins-autocontido
 
-# Aguarda brevemente para garantir que o Jenkins escreve a password
-echo "⏳ A aguardar inicialização do Jenkins..."
-sleep 10
+# ---------------------------
+# Jenkins via Kubernetes YAMLs
+# ---------------------------
+echo "✅ [4/7] Criar namespace Jenkins no cluster..."
+kubectl create namespace jenkins || echo "⚠️ Namespace 'jenkins' já existe"
 
-echo "🔐 Password inicial do Jenkins:"
-docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword || {
-  echo "❌ Não foi possível obter a password inicial. Verifica se o Jenkins está a correr corretamente."
-}
+echo "✅ [5/7] Aplicar permissões RBAC (ServiceAccount + ClusterRole)..."
+kubectl apply -f k8s/sa-jenkins.yaml
+
+echo "✅ [6/7] Criar volume persistente Jenkins..."
+mkdir -p /mnt/jenkins && chmod 755 /mnt/jenkins
+kubectl apply -f k8s/volume-jenkins.yaml
+
+echo "✅ [7/7] Aplicar deployment e service Kubernetes..."
+kubectl apply -f k8s/deploy-jenkins.yaml
+kubectl apply -f k8s/service-jenkins.yaml
 
 IP=$(hostname -I | awk '{print $1}')
 echo -e "\n✅ Jenkins a correr em: http://localhost:8080 ou http://$IP:8080"
+echo -e "📦 Jenkins Kubernetes exposto via NodePort em: http://$IP:32000 (caso ativado)\n"
