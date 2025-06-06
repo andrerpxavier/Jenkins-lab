@@ -68,7 +68,15 @@ docker run -d \
 # Jenkins via Kubernetes YAMLs
 # ---------------------------
 echo "✅ [4/7] Criar namespace Jenkins no cluster..."
-kubectl create namespace jenkins || echo "⚠️ Namespace 'jenkins' já existe"
+
+if kubectl get namespace jenkins &> /dev/null; then
+  echo "⚠️  Namespace 'jenkins' já existe. A eliminar..."
+  kubectl delete namespace jenkins --wait=true
+  echo "✅ Namespace antigo removido com sucesso."
+fi
+
+kubectl create namespace jenkins
+
 
 echo "✅ [5/7] Aplicar permissões RBAC (ServiceAccount + ClusterRole)..."
 kubectl apply -f k8s/sa-jenkins.yaml
