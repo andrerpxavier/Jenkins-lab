@@ -17,18 +17,19 @@ spec:
       containers:
         - name: jenkins
           image: jenkins-autocontido
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
             - containerPort: 50000
           volumeMounts:
-            - name: jenkins-storage
+            - name: jenkins-home
               mountPath: /var/jenkins_home
-            - name: docker-socket
+            - name: docker-sock
               mountPath: /var/run/docker.sock
       volumes:
-        - name: jenkins-storage
+        - name: jenkins-home
           persistentVolumeClaim:
             claimName: jenkins-pvc
-        - name: docker-socket
+        - name: docker-sock
           hostPath:
             path: /var/run/docker.sock
