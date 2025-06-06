@@ -1,6 +1,7 @@
 # Projeto: Pipeline CI/CD com Jenkins, Docker e Kubernetes
 
 Este repositório demonstra uma pipeline de CI/CD completa com as seguintes tecnologias:
+
 - Jenkins personalizado (auto-contido) com Docker, Git e `kubectl`
 - Construção de imagem Docker para aplicação web
 - Push da imagem para registry Docker local
@@ -12,13 +13,13 @@ Este repositório demonstra uma pipeline de CI/CD completa com as seguintes tecn
 
 ```plaintext
 Jenkins-lab/
-├── Dockerfile             # Dockerfile da aplicação hello-nginx
-├── main.html              # Página HTML de exemplo
-├── Dockerfile.jenkins     # Jenkins com Docker, Git e kubectl instalados
-├── Jenkinsfile            # Pipeline declarativa Jenkins
+├── Dockerfile              # Dockerfile da aplicação hello-nginx
+├── main.html               # Página HTML de exemplo
+├── Dockerfile.jenkins      # Jenkins com Docker, Git e kubectl instalados
+├── Jenkinsfile             # Pipeline declarativa Jenkins
 └── k8s/
-    ├── deployment.yaml    # Deployment do Kubernetes
-    └── service.yaml       # Service do Kubernetes
+    ├── deployment.yaml     # Deployment do Kubernetes
+    └── service.yaml        # Service do Kubernetes
 ```
 
 ---
@@ -26,7 +27,7 @@ Jenkins-lab/
 ## 1. Construir a imagem personalizada do Jenkins
 
 ```bash
-docker build -t jenkins-with-docker -f Dockerfile.jenkins .
+docker build -t jenkins-autocontido -f Dockerfile.jenkins .
 ```
 
 ## 2. Correr o Jenkins com permissões root
@@ -39,9 +40,7 @@ docker run -d \
   -p 8080:8080 -p 50000:50000 \
   -v jenkins_home:/var/jenkins_home \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -v ~/.kube:/root/.kube \
-  -v /usr/bin/kubectl:/usr/bin/kubectl \
-  jenkins-with-docker
+  jenkins-autocontido
 ```
 
 ## 3. Jenkinsfile (Pipeline Declarativa)
