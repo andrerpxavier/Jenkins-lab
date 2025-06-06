@@ -107,10 +107,34 @@ sleep 40  # Dá tempo ao Jenkins para gerar o ficheiro
 
 instalar_java
 
+
+
+IP=$(hostname -I | awk '{print $1}')
+echo -e "\n✅ Jenkins a correr em: http://localhost:8080 ou http://$IP:8080"
+echo -e "📦 Jenkins Kubernetes exposto via NodePort em: http://$IP:32000 (caso ativado)\n"
+
+ADMIN_PWD_FILE="/var/lib/docker/volumes/jenkins_home/_data/secrets/initialAdminPassword"
+
+echo "⏳ A aguardar password inicial do Jenkins..."
+
+until [ -f "$ADMIN_PWD_FILE" ]; do
+  sleep 2
+done
+
+ADMIN_PWD=$(cat "$ADMIN_PWD_FILE")
+echo -e "✅ Password inicial do Jenkins: \\e[1;32m$ADMIN_PWD\\e[0m"
+
 # ---------------------------
 # Jenkins CLI: criar job + build
 # ---------------------------
 echo "✅ [8/8] Criar job hello-nginx-pipeline..."
+
+echo "⏳ A aguardar que o Jenkins aceite conexões HTTP..."
+
+until curl -s http://localhost:8080/login > /dev/null; do
+  sleep 2
+done
+
 wget -q http://localhost:8080/jnlpJars/jenkins-cli.jar -O jenkins-cli.jar
 
 java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:$ADMIN_PWD install-plugin git docker-workflow kubernetes-cli workflow-aggregator ws-cleanup -restart
@@ -144,17 +168,3 @@ java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:$ADMIN_PWD build
 
 echo "🎉 Jenkins configurado com sucesso e pipeline executado!"
 
-
-IP=$(hostname -I | awk '{print $1}')
-echo -e "\n✅ Jenkins a correr em: http://localhost:8080 ou http://$IP:8080"
-echo -e "📦 Jenkins Kubernetes exposto via NodePort em: http://$IP:32000 (caso ativado)\n"
-
-ADMIN_PWD_FILE="/var/lib/docker/volumes/jenkins_home/_data/secrets/initialAdminPassword"
-
-if [ -f "$ADMIN_PWD_FILE" ]; then
-  ADMIN_PWD=$(cat "$ADMIN_PWD_FILE")
-  echo -e "✅ Password inicial do Jenkins: \e[1;32m$ADMIN_PWD\e[0m"
-else
-  echo -e "⚠️ Não foi possível encontrar a password inicial em $ADMIN_PWD_FILE"
-  echo "Tenta novamente dentro de alguns segundos ou inspeciona o volume jenkins_home manualmente."
-fi
