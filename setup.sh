@@ -1,6 +1,5 @@
 #!/bin/bash
 set -e
-
 # ---------------------------
 # Função para instalar Docker
 # ---------------------------
@@ -18,6 +17,21 @@ instalar_docker() {
   fi
 
   echo "✅ Docker instalado com sucesso!"
+}
+
+# ---------------------------
+# Função para instalar Docker
+# ---------------------------
+
+
+instalar_java() {
+  echo "🔍 A instalar Java..."
+  dnf install -y java-11-openjdk
+  if ! command -v java &> /dev/null; then
+    echo "❌ Falha ao instalar Java."
+    exit 1
+  fi
+  echo "✅ Java instalado com sucesso."
 }
 
 # ------------------------------
@@ -108,7 +122,10 @@ fi
 # ---------------------------
 # Job Automático + Jenkins CLI
 # ---------------------------
+
 echo "✅ [8/8] Criar job hello-nginx-pipeline..."
+
+instalar_java
 
 wget -q http://localhost:8080/jnlpJars/jenkins-cli.jar -O jenkins-cli.jar
 java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:$ADMIN_PWD install-plugin git docker-workflow kubernetes-cli workflow-aggregator -restart
@@ -140,4 +157,3 @@ EOF
 java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:$ADMIN_PWD create-job hello-nginx-pipeline < hello-nginx.xml
 
 echo "🎉 Jenkins está pronto com o pipeline hello-nginx-pipeline configurado!"
-
