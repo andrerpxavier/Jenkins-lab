@@ -18,5 +18,8 @@ RUN apt-get update && \
 COPY kubectl /usr/local/bin/kubectl
 RUN chmod +x /usr/local/bin/kubectl
 
+# Instalar plugins declarados
+RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
+
 # Adicionar utilizador Jenkins ao grupo docker
 RUN usermod -aG docker jenkins
