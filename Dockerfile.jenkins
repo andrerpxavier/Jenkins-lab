@@ -2,25 +2,21 @@ FROM jenkins/jenkins:lts
 
 USER root
 
-# Instalar pacotes necessários
+# Instalar ferramentas base (docker, git, curl, etc.)
 RUN apt-get update && \
     apt-get install -y \
-    docker.io \
-    git \
-    curl \
-    apt-transport-https \
-    ca-certificates \
-    gnupg \
-    lsb-release && \
+        docker.io \
+        git \
+        curl \
+        ca-certificates \
+        apt-transport-https \
+        gnupg \
+        lsb-release && \
     rm -rf /var/lib/apt/lists/*
 
-# Instalar kubectl
-RUN curl -LO "https://dl.k8s.io/release/$(curl -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
-    install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && \
-    rm kubectl
+# Instalar kubectl (fallback manual via COPY do binário local)
+COPY kubectl /usr/local/bin/kubectl
+RUN chmod +x /usr/local/bin/kubectl
 
-# Adicionar o utilizador Jenkins ao grupo docker
+# Adicionar utilizador Jenkins ao grupo docker
 RUN usermod -aG docker jenkins
-
-# Voltar ao utilizador Jenkins (por segurança, não obrigatório)
-USER jenkins
