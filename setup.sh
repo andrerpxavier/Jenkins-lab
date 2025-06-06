@@ -37,6 +37,13 @@ else
 fi
 
 echo "✅ [1/5] Iniciando Docker Registry local..."
+# Remove o registry anterior se existir
+if docker ps -a --format '{{.Names}}' | grep -Eq '^registry$'; then
+  echo "⚠️  Registry existente encontrado. A remover..."
+  docker rm -f registry
+fi
+
+# Corre novo registry
 docker run -d --name registry --restart=always -p 5000:5000 registry:2 || {
   echo "⚠️ O registry pode já estar a correr ou ocorreu um erro. Verifica com 'docker ps -a'."
 }
