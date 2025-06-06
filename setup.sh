@@ -5,7 +5,6 @@ set -e
 instalar_docker() {
   echo "🔍 Docker não encontrado. A iniciar instalação..."
 
-  # Garantir que temos os plugins e o repositório correto
   dnf install -y dnf-plugins-core epel-release
 
   dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo || {
@@ -37,24 +36,32 @@ else
 fi
 
 echo "✅ [1/5] Iniciando Docker Registry local..."
-# Remove o registry anterior se existir
 if docker ps -a --format '{{.Names}}' | grep -Eq '^registry$'; then
   echo "⚠️  Registry existente encontrado. A remover..."
   docker rm -f registry
 fi
 
-# Corre novo registry
 docker run -d --name registry --restart=always -p 5000:5000 registry:2 || {
   echo "⚠️ O registry pode já estar a correr ou ocorreu um erro. Verifica com 'docker ps -a'."
 }
 
 echo "✅ [2/5] Construindo imagem Jenkins personalizada..."
+if [ ! -f Dockerfile.jenkins ]; then
+  echo "❌ Dockerfile.jenkins não encontrado na raiz. Abortar."
+  exit 1
+fi
+
 docker build -t jenkins-autocontido -f Dockerfile.jenkins . || {
   echo "❌ Falha ao construir a imagem personalizada do Jenkins."
   exit 1
 }
 
 echo "✅ [3/5] A iniciar Jenkins com Docker, Git e kubectl..."
+if docker ps -a --format '{{.Names}}' | grep -Eq '^jenkins$'; then
+  echo "⚠️ Jenkins existente encontrado. A remover..."
+  docker rm -f jenkins
+fi
+
 docker run -d \
   --name jenkins \
   -u 0 \
