@@ -6,7 +6,6 @@ instalar_docker() {
   echo "🔍 Docker não encontrado. A iniciar instalação..."
 
   dnf install -y dnf-plugins-core epel-release
-
   dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo || {
     echo "❌ Falha ao adicionar o repositório da Docker."
     exit 1
@@ -46,11 +45,6 @@ docker run -d --name registry --restart=always -p 5000:5000 registry:2 || {
 }
 
 echo "✅ [2/5] Construindo imagem Jenkins personalizada..."
-if [ ! -f Dockerfile.jenkins ]; then
-  echo "❌ Dockerfile.jenkins não encontrado na raiz. Abortar."
-  exit 1
-fi
-
 docker build -t jenkins-autocontido -f Dockerfile.jenkins . || {
   echo "❌ Falha ao construir a imagem personalizada do Jenkins."
   exit 1
@@ -58,7 +52,7 @@ docker build -t jenkins-autocontido -f Dockerfile.jenkins . || {
 
 echo "✅ [3/5] A iniciar Jenkins com Docker, Git e kubectl..."
 if docker ps -a --format '{{.Names}}' | grep -Eq '^jenkins$'; then
-  echo "⚠️ Jenkins existente encontrado. A remover..."
+  echo "⚠️  Jenkins existente encontrado. A remover..."
   docker rm -f jenkins
 fi
 
@@ -74,6 +68,15 @@ docker run -d \
   jenkins-autocontido || {
     echo "❌ Falha ao iniciar o container do Jenkins."
     exit 1
+}
+
+# Aguarda brevemente para garantir que o Jenkins escreve a password
+echo "⏳ A aguardar inicialização do Jenkins..."
+sleep 10
+
+echo "🔐 Password inicial do Jenkins:"
+docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword || {
+  echo "❌ Não foi possível obter a password inicial. Verifica se o Jenkins está a correr corretamente."
 }
 
 IP=$(hostname -I | awk '{print $1}')
