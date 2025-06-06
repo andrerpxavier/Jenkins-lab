@@ -1,8 +1,7 @@
 git
-docker-plugin
+github
+pipeline
 workflow-aggregator
-kubernetes
-blueocean
-credentials
-pipeline-stage-view
-pipeline-github-lib
+docker-workflow
+workspace-cleanup
+rebuild
