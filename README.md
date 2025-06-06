@@ -1,9 +1,9 @@
 # Projeto: Pipeline CI/CD com Jenkins, Docker e Kubernetes
 
 Este repositório demonstra uma pipeline de CI/CD completa com as seguintes tecnologias:
-- Jenkins personalizado com Docker e Git
-- Construção de imagem Docker
-- Push para registry local
+- Jenkins personalizado (auto-contido) com Docker, Git e `kubectl`
+- Construção de imagem Docker para aplicação web
+- Push da imagem para registry Docker local
 - Deployment em cluster Kubernetes local
 
 ---
@@ -12,13 +12,13 @@ Este repositório demonstra uma pipeline de CI/CD completa com as seguintes tecn
 
 ```plaintext
 Jenkins-lab/
-├── Dockerfile            # Dockerfile da aplicação hello-nginx
-├── main.html             # Página HTML de exemplo
-├── Dockerfile.jenkins    # Jenkins com Docker e Git
-├── Jenkinsfile           # Pipeline declarativa Jenkins
+├── Dockerfile             # Dockerfile da aplicação hello-nginx
+├── main.html              # Página HTML de exemplo
+├── Dockerfile.jenkins     # Jenkins com Docker, Git e kubectl instalados
+├── Jenkinsfile            # Pipeline declarativa Jenkins
 └── k8s/
-    ├── deployment.yaml   # Deployment do Kubernetes
-    └── service.yaml      # Service do Kubernetes
+    ├── deployment.yaml    # Deployment do Kubernetes
+    └── service.yaml       # Service do Kubernetes
 ```
 
 ---
@@ -44,7 +44,7 @@ docker run -d \
   jenkins-with-docker
 ```
 
-## 3. Jenkinsfile (Pipeline)
+## 3. Jenkinsfile (Pipeline Declarativa)
 
 ```groovy
 pipeline {
