@@ -89,7 +89,7 @@ echo "✅ [7/7] Aplicar deployment e service Kubernetes..."
 kubectl apply -f k8s/deploy-jenkins.yaml
 kubectl apply -f k8s/service-jenkins.yaml
 
-sleep 60  # Dá tempo ao Jenkins para gerar o ficheiro
+sleep 40  # Dá tempo ao Jenkins para gerar o ficheiro
 
 IP=$(hostname -I | awk '{print $1}')
 echo -e "\n✅ Jenkins a correr em: http://localhost:8080 ou http://$IP:8080"
@@ -104,4 +104,40 @@ else
   echo -e "⚠️ Não foi possível encontrar a password inicial em $ADMIN_PWD_FILE"
   echo "Tenta novamente dentro de alguns segundos ou inspeciona o volume jenkins_home manualmente."
 fi
+
+# ---------------------------
+# Job Automático + Jenkins CLI
+# ---------------------------
+echo "✅ [8/8] Criar job hello-nginx-pipeline..."
+
+wget -q http://localhost:8080/jnlpJars/jenkins-cli.jar -O jenkins-cli.jar
+java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:$ADMIN_PWD install-plugin git docker-workflow kubernetes-cli workflow-aggregator -restart
+
+# Espera para Jenkins reiniciar plugins
+sleep 30
+
+cat <<EOF > hello-nginx.xml
+<flow-definition plugin="workflow-job">
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition" plugin="workflow-cps">
+    <scm class="hudson.plugins.git.GitSCM" plugin="git">
+      <userRemoteConfigs>
+        <hudson.plugins.git.UserRemoteConfig>
+          <url>https://github.com/andrerpxavier/Jenkins-lab.git</url>
+        </hudson.plugins.git.UserRemoteConfig>
+      </userRemoteConfigs>
+      <branches>
+        <hudson.plugins.git.BranchSpec>
+          <name>*/main</name>
+        </hudson.plugins.git.BranchSpec>
+      </branches>
+    </scm>
+    <scriptPath>Jenkinsfile</scriptPath>
+  </definition>
+  <triggers/>
+</flow-definition>
+EOF
+
+java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:$ADMIN_PWD create-job hello-nginx-pipeline < hello-nginx.xml
+
+echo "🎉 Jenkins está pronto com o pipeline hello-nginx-pipeline configurado!"
 
