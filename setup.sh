@@ -45,6 +45,13 @@ docker build -t jenkins-autocontido -f Dockerfile.jenkins .
 # Jenkins container via Docker
 # ---------------------------
 echo "✅ [3/7] A iniciar Jenkins standalone..."
+
+# Remove o Jenkins anterior se existir
+if docker ps -a --format '{{.Names}}' | grep -Eq '^jenkins$'; then
+  echo "⚠️  Jenkins já existia. A remover..."
+  docker rm -f jenkins
+fi
+
 docker run -d \
   --name jenkins \
   -u 0 \
@@ -52,9 +59,10 @@ docker run -d \
   -p 8080:8080 -p 50000:50000 \
   -v jenkins_home:/var/jenkins_home \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -v ~/.kube:/root/.kube \
-  -v /usr/bin/kubectl:/usr/bin/kubectl \
-  jenkins-autocontido
+  jenkins-autocontido || {
+    echo "❌ Falha ao iniciar o container do Jenkins."
+    exit 1
+}
 
 # ---------------------------
 # Jenkins via Kubernetes YAMLs
