@@ -145,7 +145,7 @@ spec:
     - protocol: TCP
       port: 80
       targetPort: 80
-      nodePort: 30080
+      nodePort: 8083
   type: NodePort
 ```
 
@@ -156,7 +156,7 @@ spec:
 ```bash
 kubectl get pods
 kubectl get svc
-curl http://<IP-do-servidor>:30080
+curl http://<IP-do-servidor>:8083
 ```
 
 ---
