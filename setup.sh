@@ -1,22 +1,34 @@
 #!/bin/bash
-
 set -e
 
-# 1. Subir o registry local (se não existir)
-echo ✅ "[1/5] Iniciando Docker Registry local..."
-docker inspect registry >/dev/null 2>&1 || \
-  docker run -d -p 5000:5000 --name registry registry:2
+# Função para instalar o Docker se não estiver presente
+instalar_docker() {
+  echo "🔍 Docker não encontrado. A iniciar instalação..."
 
-# 2. Construir imagem Jenkins personalizada
-echo ✅ "[2/5] Construindo imagem Jenkins personalizada..."
+  dnf install -y dnf-plugins-core
+  dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+  dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+  systemctl enable docker
+  systemctl start docker
+
+  echo "✅ Docker instalado com sucesso!"
+}
+
+# Verifica se o Docker está instalado
+if ! command -v docker &> /dev/null; then
+  instalar_docker
+else
+  echo "✅ Docker já está instalado."
+fi
+
+echo "✅ [1/5] Iniciando Docker Registry local..."
+docker run -d --name registry --restart=always -p 5000:5000 registry:2
+
+echo "✅ [2/5] Construindo imagem Jenkins personalizada..."
 docker build -t jenkins-autocontido -f Dockerfile.jenkins .
 
-# 3. Apagar Jenkins antigo (se existir)
-echo ✅ "[3/5] Removendo Jenkins anterior (se existir)..."
-docker rm -f jenkins >/dev/null 2>&1 || true
-
-# 4. Correr Jenkins com Docker e kubectl incluído
-echo ✅ "[4/5] Iniciando Jenkins com Docker e kubectl..."
+echo "✅ [3/5] A iniciar Jenkins com Docker, Git e kubectl..."
 docker run -d \
   --name jenkins \
   -u 0 \
@@ -24,10 +36,9 @@ docker run -d \
   -p 8080:8080 -p 50000:50000 \
   -v jenkins_home:/var/jenkins_home \
   -v /var/run/docker.sock:/var/run/docker.sock \
+  -v ~/.kube:/root/.kube \
+  -v /usr/bin/kubectl:/usr/bin/kubectl \
   jenkins-autocontido
 
-# 5. Mostrar a password inicial do Jenkins
-echo "\n⚠️ Jenkins inicializado. Password de acesso:"
-docker exec -it jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 IP=$(hostname -I | awk '{print $1}')
-echo -e "\n✅ Jenkins a correr em http://localhost:8080 e acessível através de http://$IP:8080"
+echo -e "\n✅ Jenkins a correr em http://localhost:8080 ou http://$IP:8080"
