@@ -1,3 +1,8 @@
-git
-github
-pipeline
+git:latest
+docker-plugin:latest
+workflow-aggregator:latest
+kubernetes:latest
+blueocean:latest
+credentials:latest
+pipeline-stage-view:latest
+pipeline-github-lib:latest
