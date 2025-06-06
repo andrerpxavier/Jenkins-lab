@@ -1,5 +1,3 @@
-cleanWs()
-
 pipeline {
   agent any
 
@@ -12,6 +10,12 @@ pipeline {
   }
 
   stages {
+    stage('Preparar Workspace') {
+      steps {
+        cleanWs()
+      }
+    }
+
     stage('Clone Repositório') {
       steps {
         git branch: 'main', url: 'https://github.com/andrerpxavier/Jenkins-lab.git'
