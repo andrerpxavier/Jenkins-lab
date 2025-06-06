@@ -89,11 +89,11 @@ echo "✅ [7/7] Aplicar deployment e service Kubernetes..."
 kubectl apply -f k8s/deploy-jenkins.yaml
 kubectl apply -f k8s/service-jenkins.yaml
 
+sleep 60  # Dá tempo ao Jenkins para gerar o ficheiro
+
 IP=$(hostname -I | awk '{print $1}')
 echo -e "\n✅ Jenkins a correr em: http://localhost:8080 ou http://$IP:8080"
 echo -e "📦 Jenkins Kubernetes exposto via NodePort em: http://$IP:32000 (caso ativado)\n"
-
-sleep 10  # Dá tempo ao Jenkins para gerar o ficheiro
 
 ADMIN_PWD_FILE="/var/lib/docker/volumes/jenkins_home/_data/secrets/initialAdminPassword"
 
