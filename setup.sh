@@ -20,13 +20,13 @@ instalar_docker() {
 }
 
 # ---------------------------
-# Função para instalar Docker
+# Função para instalar Java 17
 # ---------------------------
 
 
 instalar_java() {
-  echo "🔍 A instalar Java..."
-  dnf install -y java-11-openjdk
+  echo "🔍 A instalar Java ..."
+  dnf install -y java-17-openjdk
   if ! command -v java &> /dev/null; then
     echo "❌ Falha ao instalar Java."
     exit 1
@@ -119,19 +119,17 @@ else
   echo "Tenta novamente dentro de alguns segundos ou inspeciona o volume jenkins_home manualmente."
 fi
 
-# ---------------------------
-# Job Automático + Jenkins CLI
-# ---------------------------
 
+# ---------------------------
+# Jenkins CLI: criar job + build
+# ---------------------------
 echo "✅ [8/8] Criar job hello-nginx-pipeline..."
-
-instalar_java
-
 wget -q http://localhost:8080/jnlpJars/jenkins-cli.jar -O jenkins-cli.jar
+
 java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:$ADMIN_PWD install-plugin git docker-workflow kubernetes-cli workflow-aggregator -restart
 
-# Espera para Jenkins reiniciar plugins
-sleep 30
+echo "⏳ A aguardar reinício do Jenkins após plugins..."
+sleep 40
 
 cat <<EOF > hello-nginx.xml
 <flow-definition plugin="workflow-job">
@@ -155,5 +153,6 @@ cat <<EOF > hello-nginx.xml
 EOF
 
 java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:$ADMIN_PWD create-job hello-nginx-pipeline < hello-nginx.xml
+java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:$ADMIN_PWD build hello-nginx-pipeline
 
-echo "🎉 Jenkins está pronto com o pipeline hello-nginx-pipeline configurado!"
+echo "🎉 Jenkins configurado com sucesso e pipeline executado!"
