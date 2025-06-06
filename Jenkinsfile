@@ -14,7 +14,7 @@ pipeline {
   stages {
     stage('Clone Repositório') {
       steps {
-        git 'https://github.com/andrerpxavier/Jenkins-lab.git'
+        git branch: 'main', url: 'https://github.com/andrerpxavier/Jenkins-lab.git'
       }
     }
 
