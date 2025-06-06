@@ -2,19 +2,22 @@ FROM jenkins/jenkins:lts
 
 USER root
 
-# Instalar dependências
+# Instalar Docker CLI, Git, Curl, e kubectl
 RUN apt-get update && \
     apt-get install -y \
-        docker.io \
-        git \
-        curl \
-        apt-transport-https \
-        ca-certificates \
-        gnupg \
-        lsb-release && \
-    curl -LO "https://dl.k8s.io/release/$(curl -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
-    install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && \
-    rm kubectl && \
-    usermod -aG docker jenkins
+      docker.io \
+      git \
+      curl \
+      apt-transport-https \
+      ca-certificates \
+      gnupg \
+      lsb-release && \
+    curl -fsSLo /usr/share/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" > /etc/apt/sources.list.d/kubernetes.list && \
+    apt-get update && \
+    apt-get install -y kubectl && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-USER jenkins
+# Adiciona o utilizador Jenkins ao grupo Docker (importante para usar o socket)
+RUN usermod -aG docker jenkins
