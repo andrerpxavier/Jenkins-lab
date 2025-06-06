@@ -14,8 +14,11 @@ RUN apt-get update && \
         lsb-release && \
     rm -rf /var/lib/apt/lists/*
 
-# Instalar kubectl (fallback manual via COPY do binário local)
+# Copiar kubectl e ficheiro de plugins
 COPY kubectl /usr/local/bin/kubectl
+COPY plugins.txt /usr/share/jenkins/ref/plugins.txt
+
+# Tornar kubectl executável
 RUN chmod +x /usr/local/bin/kubectl
 
 # Instalar plugins declarados
