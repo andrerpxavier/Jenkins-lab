@@ -155,7 +155,25 @@ spec:
 ```bash
 kubectl get pods
 kubectl get svc
-curl http://<IP-do-servidor>:8083
+IP=$(hostname -I | awk '{print $1}')
+curl http://$IP:8083
+```
+
+---
+
+📌 ## Instruções para usar:
+1. Fas clone do repositório
+```bash
+git clone https://github.com/andrerpxavier/Jenkins-lab.git
+cd Jenkins-lab
+```
+2.Torna o script executável:
+```bash
+chmod +x setup.sh
+```
+3.Executa a configuração completa:
+```bash
+./setup.sh
 ```
 
 ---
