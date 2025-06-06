@@ -32,19 +32,19 @@ fi
 # ---------------------------
 # Jenkins Registry + Imagem
 # ---------------------------
-echo "✅ [1/7] Iniciando Docker Registry local..."
+echo "✅ [1/8] Iniciando Docker Registry local..."
 if docker ps -a --format '{{.Names}}' | grep -Eq '^registry$'; then
   docker rm -f registry
 fi
 docker run -d --name registry --restart=always -p 5000:5000 registry:2
 
-echo "✅ [2/7] Construindo imagem Jenkins personalizada..."
+echo "✅ [2/8] Construindo imagem Jenkins personalizada..."
 docker build -t jenkins-autocontido -f Dockerfile.jenkins .
 
 # ---------------------------
 # Jenkins container via Docker
 # ---------------------------
-echo "✅ [3/7] A iniciar Jenkins standalone..."
+echo "✅ [3/8] A iniciar Jenkins standalone..."
 
 # Remove o Jenkins anterior se existir
 if docker ps -a --format '{{.Names}}' | grep -Eq '^jenkins$'; then
@@ -67,7 +67,7 @@ docker run -d \
 # ---------------------------
 # Jenkins via Kubernetes YAMLs
 # ---------------------------
-echo "✅ [4/7] Criar namespace Jenkins no cluster..."
+echo "✅ [4/8] Criar namespace Jenkins no cluster..."
 
 if kubectl get namespace jenkins &> /dev/null; then
   echo "⚠️  Namespace 'jenkins' já existe. A eliminar..."
@@ -78,14 +78,14 @@ fi
 kubectl create namespace jenkins
 
 
-echo "✅ [5/7] Aplicar permissões RBAC (ServiceAccount + ClusterRole)..."
+echo "✅ [5/8] Aplicar permissões RBAC (ServiceAccount + ClusterRole)..."
 kubectl apply -f k8s/sa-jenkins.yaml
 
-echo "✅ [6/7] Criar volume persistente Jenkins..."
+echo "✅ [6/8] Criar volume persistente Jenkins..."
 mkdir -p /mnt/jenkins && chmod 755 /mnt/jenkins
 kubectl apply -f k8s/volume-jenkins.yaml
 
-echo "✅ [7/7] Aplicar deployment e service Kubernetes..."
+echo "✅ [7/8] Aplicar deployment e service Kubernetes..."
 kubectl apply -f k8s/deploy-jenkins.yaml
 kubectl apply -f k8s/service-jenkins.yaml
 
