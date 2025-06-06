@@ -5,23 +5,26 @@ metadata:
   labels:
     type: local
 spec:
-  storageClassName: manual
   capacity:
     storage: 5Gi
   accessModes:
     - ReadWriteOnce
   hostPath:
     path: "/mnt/jenkins"
+  persistentVolumeReclaimPolicy: Retain
+  volumeMode: Filesystem
+
 ---
+
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: jenkins-pvc
   namespace: jenkins
 spec:
-  storageClassName: manual
   accessModes:
     - ReadWriteOnce
+  volumeName: jenkins-pv
   resources:
     requests:
       storage: 5Gi
