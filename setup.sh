@@ -29,5 +29,5 @@ docker run -d \
 # 5. Mostrar a password inicial do Jenkins
 echo "\n⚠️ Jenkins inicializado. Password de acesso:"
 docker exec -it jenkins cat /var/jenkins_home/secrets/initialAdminPassword
-
-echo "\n✅ Jenkins a correr em http://localhost:8080"
+IP=$(hostname -I | awk '{print $1}')
+echo -e "\n✅ Jenkins a correr em http://localhost:8080 e acessível através de http://$IP:8080"
