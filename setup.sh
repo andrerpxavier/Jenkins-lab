@@ -119,7 +119,7 @@ else
   echo "Tenta novamente dentro de alguns segundos ou inspeciona o volume jenkins_home manualmente."
 fi
 
-instalar_java()
+instalar_java
 
 # ---------------------------
 # Jenkins CLI: criar job + build
