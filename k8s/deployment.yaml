@@ -15,12 +15,7 @@ spec:
       nodeName: servidor1
       containers:
         - name: nginx
-<<<<<<< HEAD
           image: localhost:5000/hello-nginx
           imagePullPolicy: Always
-=======
-          image: hello-nginx:latest
->>>>>>> 960fb5a51cd24df6f6d22228ee49d92b89e57208
           ports:
             - containerPort: 80
-
