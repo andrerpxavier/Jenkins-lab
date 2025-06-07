@@ -45,7 +45,7 @@ configurar_docker_worker() {
   if ! ssh -o BatchMode=yes -o ConnectTimeout=5 root@$WORKER_IP 'echo SSH OK' 2>/dev/null | grep -q 'SSH OK'; then
     echo "⚠️  Acesso SSH sem password falhou. Vamos tentar configurar com ssh-copy-id..."
     if [ -f ~/.ssh/id_rsa.pub ]; then
-      ssh-copy-id root@$WORKER_IP || {
+      ssh-copy-id -f root@$WORKER_IP || {
         echo "❌ Não foi possível configurar acesso SSH ao worker $WORKER_IP."
         return 1
       }
