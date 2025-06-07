@@ -141,6 +141,19 @@ echo "✅ [5/8] Aplicar permissões RBAC (ServiceAccount + ClusterRole)..."
 kubectl apply -f k8s/sa-jenkins.yaml
 
 echo "✅ [6/8] Criar volume persistente Jenkins..."
+
+# Apagar PVC antigo se existir
+if kubectl get pvc -n jenkins jenkins-pvc &>/dev/null; then
+  echo "⚠️  PVC jenkins-pvc já existe. A eliminar..."
+  kubectl delete pvc jenkins-pvc -n jenkins --wait=true
+fi
+
+# Apagar PV antigo se existir
+if kubectl get pv jenkins-pv &>/dev/null; then
+  echo "⚠️  PV jenkins-pv já existe. A eliminar..."
+  kubectl delete pv jenkins-pv --wait=true
+fi
+
 mkdir -p /mnt/jenkins && chmod 755 /mnt/jenkins
 kubectl apply -f k8s/volume-jenkins.yaml
 
