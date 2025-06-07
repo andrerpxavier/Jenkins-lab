@@ -168,6 +168,10 @@ echo "✅ PVC ligado ao PV com sucesso."
 
 
 echo "✅ [7/8] Aplicar deployment e service Kubernetes..."
+
+REGISTRY_IP=$(hostname -I | awk '{print $1}')
+sed -i "s|image: .*:5000/jenkins-autocontido|image: ${REGISTRY_IP}:5000/jenkins-autocontido|" k8s/deploy-jenkins.yaml
+
 kubectl apply -f k8s/deploy-jenkins.yaml
 kubectl apply -f k8s/service-jenkins.yaml
 
