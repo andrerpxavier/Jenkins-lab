@@ -56,6 +56,16 @@ configurar_worker() {
     }
   fi
 
+    echo "🧠 A verificar se o worker tem menos de 2GB de RAM..."
+  RAM_MB=$(ssh root@"$WORKER_IP" "free -m | awk '/^Mem:/ { print \$2 }'")
+  if [ "$RAM_MB" -lt 2000 ]; then
+    echo "➕ A criar swapfile de 2GB no worker $WORKER_IP..."
+    ssh root@"$WORKER_IP" "fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile"
+    ssh root@"$WORKER_IP" "grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab"
+  else
+    echo "✅ O worker tem RAM suficiente. Swap não necessária."
+  fi
+  
   echo "📤 A copiar cache de RPMs para o worker..."
   scp -r ./docker_rpm_cache root@"$WORKER_IP":/root/ || {
     echo "❌ Falha ao copiar pacotes RPM para $WORKER_IP"
@@ -83,9 +93,6 @@ systemctl daemon-reexec
 systemctl restart docker || echo "⚠️  Falha ao reiniciar Docker."
 EOF
 }
-
-
-
   
 # ---------------------------
 # Função para instalar Java 17
