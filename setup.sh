@@ -277,8 +277,33 @@ echo "✅ [7/8] Aplicar deployment e service Kubernetes..."
 REGISTRY_IP=$(hostname -I | awk '{print $1}')
 sed -i "s|image: .*:5000/jenkins-autocontido|image: ${REGISTRY_IP}:5000/jenkins-autocontido|" k8s/deploy-jenkins.yaml
 
+echo "🔍 A verificar se todos os workers têm a imagem jenkins-autocontido localmente..."
+
+FALHA_IMAGEM=0
+
+for NODE in $WORKER_NODES; do
+  IP=$(kubectl get node $NODE -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
+  echo "🔎 Verificar imagem no worker $NODE ($IP)..."
+
+  ssh root@"$IP" "docker image inspect ${REGISTRY_IP}:5000/jenkins-autocontido:latest > /dev/null 2>&1"
+  if [ $? -ne 0 ]; then
+    echo "❌ Imagem não encontrada no worker $NODE ($IP)"
+    FALHA_IMAGEM=1
+  else
+    echo "✅ Imagem encontrada no worker $NODE ($IP)"
+  fi
+done
+
+if [ "$FALHA_IMAGEM" -eq 1 ]; then
+  echo "🛑 Erro: Pelo menos um dos workers não tem a imagem jenkins-autocontido local. Abortar deploy."
+  exit 1
+fi
+
+echo "✅ Todos os workers têm a imagem localmente. A avançar com o deployment do Jenkins..."
+
 kubectl apply -f k8s/deploy-jenkins.yaml
 kubectl apply -f k8s/service-jenkins.yaml
+
 
 sleep 40  # Dá tempo ao Jenkins para gerar o ficheiro
 
