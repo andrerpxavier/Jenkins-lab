@@ -38,6 +38,7 @@ preparar_cache_docker_rpms() {
 
 configurar_worker() {
   local WORKER_IP="$1"
+  local REGISTRY_IP="$2"
 
   echo "🔧 A preparar configuração no worker $WORKER_IP..."
 
@@ -56,7 +57,7 @@ configurar_worker() {
     }
   fi
 
-    echo "🧠 A verificar se o worker tem menos de 2GB de RAM..."
+  echo "🧠 A verificar se o worker tem menos de 2GB de RAM..."
   RAM_MB=$(ssh root@"$WORKER_IP" "free -m | awk '/^Mem:/ { print \$2 }'")
   if [ "$RAM_MB" -lt 2000 ]; then
     echo "➕ A criar swapfile de 2GB no worker $WORKER_IP..."
@@ -65,7 +66,7 @@ configurar_worker() {
   else
     echo "✅ O worker tem RAM suficiente. Swap não necessária."
   fi
-  
+
   echo "📤 A copiar cache de RPMs para o worker..."
   scp -r ./docker_rpm_cache root@"$WORKER_IP":/root/ || {
     echo "❌ Falha ao copiar pacotes RPM para $WORKER_IP"
@@ -73,7 +74,7 @@ configurar_worker() {
   }
 
   echo "🐳 A configurar Docker remotamente..."
-  ssh root@"$WORKER_IP" bash -s <<'EOF'
+  ssh root@"$WORKER_IP" bash -s <<EOF
 if ! command -v docker &>/dev/null; then
   echo "🧱 Docker não encontrado. A instalar via cache local..."
   dnf install -y /root/docker_rpm_cache/*.rpm
@@ -83,16 +84,17 @@ fi
 
 echo "⚙️  A configurar /etc/docker/daemon.json com registry inseguro..."
 mkdir -p /etc/docker
-cat <<JSON > /etc/docker/daemon.json
-{
-  "insecure-registries": ["192.168.8.137:5000"]
-}
-JSON
+echo '{ "insecure-registries": ["$REGISTRY_IP:5000"] }' > /etc/docker/daemon.json
 
-systemctl daemon-reexec
+echo "🔄 A reiniciar Docker..."
 systemctl restart docker || echo "⚠️  Falha ao reiniciar Docker."
+
+echo "♻️  A reiniciar kubelet..."
+systemctl daemon-reexec
+systemctl restart kubelet
 EOF
 }
+
   
 # ---------------------------
 # Função para instalar Java 17
