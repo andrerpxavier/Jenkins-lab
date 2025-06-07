@@ -36,45 +36,38 @@ preparar_cache_docker_rpms() {
   echo "✅ Cache local criada em $CACHE_DIR"
 }
 
-configurar_docker_worker() {
-  WORKER_IP=$1
-  REGISTRY_IP=$2
+configurar_worker() {
+  local WORKER_IP="$1"
   echo "🔧 A preparar configuração no worker $WORKER_IP..."
 
-  echo "🔍 A verificar acesso SSH root@$WORKER_IP..."
-  if ! ssh -o BatchMode=yes -o ConnectTimeout=5 root@$WORKER_IP 'echo SSH OK' 2>/dev/null | grep -q 'SSH OK'; then
-    echo "⚠️  Acesso SSH sem password falhou. Vamos tentar configurar com ssh-copy-id..."
-    if [ -f ~/.ssh/id_rsa.pub ]; then
-      ssh-copy-id -f root@$WORKER_IP || {
-        echo "❌ Não foi possível configurar acesso SSH ao worker $WORKER_IP."
-        return 1
-      }
-    else
-      echo "❌ Chave SSH não encontrada (~/.ssh/id_rsa.pub). Aborta configuração para $WORKER_IP."
-      return 1
-    fi
-  else
-    echo "✅ Acesso SSH sem password já está funcional."
+  echo "🌐 A testar conectividade com $WORKER_IP..."
+  if ! ping -c 2 "$WORKER_IP" > /dev/null 2>&1; then
+    echo "❌ Worker $WORKER_IP está inacessível por ICMP. A saltar..."
+    return 1
   fi
 
-  echo "🔧 A instalar Docker CE via cache local no worker $WORKER_IP..."
+  if ! nc -z "$WORKER_IP" 22; then
+    echo "❌ Porta SSH (22) inacessível em $WORKER_IP. A saltar..."
+    return 1
+  fi
 
-  # Criação de diretório remoto
-  ssh root@$WORKER_IP "mkdir -p /tmp/docker_rpm_cache"
+  echo "🔍 A verificar acesso SSH root@$WORKER_IP..."
+  if ssh -o BatchMode=yes -o ConnectTimeout=5 root@"$WORKER_IP" 'echo ok' 2>/dev/null | grep -q ok; then
+    echo "✅ Acesso SSH sem password já está funcional."
+  else
+    echo "⚠️  Acesso SSH sem password falhou. Vamos tentar configurar com ssh-copy-id..."
+    if ! ssh-copy-id -f root@"$WORKER_IP"; then
+      echo "❌ Falha ao instalar chave SSH em $WORKER_IP. A saltar..."
+      return 1
+    fi
+  fi
 
-  # Copiar os pacotes via SCP
-  scp ./docker_rpm_cache/*.rpm root@$WORKER_IP:/tmp/docker_rpm_cache/
-
-  # Instalação no worker
-  ssh root@$WORKER_IP bash -s <<'EOF'
-if ! systemctl status docker &>/dev/null; then
-  echo "📦 A instalar pacotes Docker via cache local..."
-  dnf localinstall -y /tmp/docker_rpm_cache/*.rpm || {
-    echo "❌ Falha ao instalar Docker via cache local."
-    exit 1
-  }
-  systemctl enable docker
-  systemctl start docker
+  echo "🐳 A instalar/configurar Docker em $WORKER_IP..."
+  ssh root@"$WORKER_IP" bash -s <<'EOF'
+if ! command -v docker &>/dev/null; then
+  echo "🧱 Docker não encontrado. A instalar via cache local..."
+  mkdir -p /root/docker_rpm_cache && cp -r ./docker_rpm_cache/* /root/docker_rpm_cache/
+  dnf install -y /root/docker_rpm_cache/*.rpm
 else
   echo "✅ Docker já está instalado."
 fi
@@ -83,17 +76,13 @@ echo "⚙️  A configurar /etc/docker/daemon.json com registry inseguro..."
 mkdir -p /etc/docker
 cat <<JSON > /etc/docker/daemon.json
 {
-  "insecure-registries": ["$REGISTRY_IP:5000"]
+  "insecure-registries": ["192.168.8.137:5000"]
 }
 JSON
 
 echo "🔄 A reiniciar Docker..."
 systemctl daemon-reexec
-systemctl restart docker
-
-sleep 2
-echo "🔍 A testar ligação ao registry: http://$REGISTRY_IP:5000..."
-curl --max-time 5 http://$REGISTRY_IP:5000/v2/_catalog || echo '❌ Erro ao contactar o registry'
+systemctl restart docker || echo "⚠️  Falha ao reiniciar Docker. Verifica manualmente."
 EOF
 }
 
@@ -145,7 +134,7 @@ WORKER_NODES=$(kubectl get nodes -l node-role.kubernetes.io/worker -o jsonpath='
 
 for NODE in $WORKER_NODES; do
   IP=$(kubectl get node $NODE -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
-  configurar_docker_worker "$IP" "$REGISTRY_IP"
+  configurar_worker  "$IP" "$REGISTRY_IP"
 done
 
 # ---------------------------
