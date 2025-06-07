@@ -90,6 +90,7 @@ if kubectl get namespace jenkins &> /dev/null; then
 fi
 
 kubectl create namespace jenkins
+kubectl apply -f k8s/rbac-jenkins-admin.yaml
 
 
 echo "✅ [5/8] Aplicar permissões RBAC (ServiceAccount + ClusterRole)..."
