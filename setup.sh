@@ -76,7 +76,10 @@ sleep 5
 echo "✅ Docker configurado com suporte para registry local inseguro."
 
 
-docker push localhost:5000/jenkins-autocontido
+docker push localhost:5000/jenkins-autocontido || {
+  echo "❌ Falha ao fazer push da imagem Jenkins para o registry local."
+  exit 1
+}
 
 
 echo "🔍 Validar que a imagem está no registry local..."
@@ -154,8 +157,15 @@ if kubectl get pv jenkins-pv &>/dev/null; then
   kubectl delete pv jenkins-pv --wait=true
 fi
 
-mkdir -p /mnt/jenkins && chmod 755 /mnt/jenkins
+mkdir -p /mnt/jenkins && chmod 755 /mnt/jenkins && chown -R 1000:1000 /mnt/jenkins
 kubectl apply -f k8s/volume-jenkins.yaml
+
+echo "⏳ A Aguardar que o PVC fique ligado ao PV..."
+until kubectl get pvc -n jenkins jenkins-pvc -o jsonpath='{.status.phase}' | grep -q "Bound"; do
+  sleep 2
+done
+echo "✅ PVC ligado ao PV com sucesso."
+
 
 echo "✅ [7/8] Aplicar deployment e service Kubernetes..."
 kubectl apply -f k8s/deploy-jenkins.yaml
