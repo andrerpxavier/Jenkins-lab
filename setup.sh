@@ -294,22 +294,16 @@ for NODE in $WORKER_NODES; do
   IP=$(kubectl get node "$NODE" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
   echo "🔎 Verificar imagem no worker $NODE ($IP)..."
 
-  if ! ssh -o StrictHostKeyChecking=no root@"$IP" docker image inspect "${REGISTRY_IP}:5000/jenkins-autocontido:latest" > /dev/null 2>&1; then
-    echo "⚠️  Imagem não encontrada no worker $NODE. A tentar fazer pull manualmente..."
-
-    if ! ssh root@"$IP" docker pull "${REGISTRY_IP}:5000/jenkins-autocontido:latest"; then
-      echo "❌ Falha ao fazer pull da imagem no worker $NODE ($IP)"
-      FALHA_IMAGEM=1
-    else
-      echo "✅ Pull bem-sucedido no worker $NODE"
-    fi
+  if ssh root@"$IP" docker image inspect "${REGISTRY_IP}:5000/jenkins-autocontido:latest" > /dev/null 2>&1; then
+    echo "✅ Imagem encontrada no worker $NODE"
   else
-    echo "✅ Imagem já está presente no worker $NODE"
+    echo "❌ Imagem NÃO encontrada no worker $NODE ($IP)"
+    FALHA_IMAGEM=1
   fi
 done
 
 if [ "$FALHA_IMAGEM" -eq 1 ]; then
-  echo "🛑 Erro: Pelo menos um dos workers não conseguiu obter a imagem jenkins-autocontido. Abortar deploy."
+  echo "🛑 Erro: Pelo menos um dos workers não tem a imagem carregada. Abortar deployment."
   exit 1
 fi
 
@@ -321,8 +315,6 @@ kubectl apply -f k8s/service-jenkins.yaml
 sleep 40  # Dá tempo ao Jenkins para gerar o ficheiro
 
 instalar_java
-
-
 
 IP=$(hostname -I | awk '{print $1}')
 #echo -e "\n✅ Jenkins a correr em: http://localhost:8080 ou http://$IP:8080"
