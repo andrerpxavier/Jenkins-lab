@@ -41,19 +41,6 @@ preparar_cache_docker_rpms() {
   echo "✅ Cache local criada em $CACHE_DIR"
 }
 
-# 🔁 Geração da imagem .tar (antes do loop)
-if [ ! -f "$BASE_DIR/jenkins-autocontido.tar" ]; then
-  echo "📦 A guardar imagem Jenkins como tar..."
-  docker save -o "$BASE_DIR/jenkins-autocontido.tar" jenkins-autocontido:latest
-else
-  echo "✅ Imagem Jenkins já exportada localmente"
-fi
-
-if [ ! -f "$BASE_DIR/jenkins-autocontido.tar" ]; then
-  echo "❌ Erro: Falhou a criação de jenkins-autocontido.tar"
-  exit 1
-fi
-
 # 🔧 Função de configuração remota
 configurar_worker() {
   local WORKER_IP="$1"
@@ -145,7 +132,7 @@ instalar_java() {
 # Verificação e instalação base
 # ------------------------------
 if ! command -v docker &> /dev/null; then
-    instalar_docker
+  instalar_docker
 else
   echo "✅ Docker já está instalado."
 fi
@@ -163,7 +150,7 @@ else
   echo "✅ Chave SSH já existe."
 fi
 
-echo "🔎 A detetar workers no cluster Kubernetes..."
+echo "🔎 A preparar cache local de pacotes Docker..."
 
 if [ ! -d "$BASE_DIR/docker_rpm_cache" ]; then
   preparar_cache_docker_rpms
@@ -171,13 +158,8 @@ else
   echo "✅ Cache de pacotes Docker já existe em $BASE_DIR/docker_rpm_cache"
 fi
 
+# Atualizar IP do registry
 REGISTRY_IP=$(hostname -I | awk '{print $1}')
-WORKER_NODES=$(kubectl get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[*].metadata.name}')
-
-for NODE in $WORKER_NODES; do
-  IP=$(kubectl get node $NODE -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
-  configurar_worker  "$IP" "$REGISTRY_IP"
-done
 
 # ---------------------------
 # Jenkins Registry + Imagem
@@ -196,40 +178,52 @@ docker build -t jenkins-autocontido -f Dockerfile.jenkins .
 docker tag jenkins-autocontido ${REGISTRY_IP}:5000/jenkins-autocontido
 
 echo "📦 A exportar imagem Jenkins como tarball..."
-docker save ${REGISTRY_IP}:5000/jenkins-autocontido:latest -o jenkins-autocontido.tar
+if [ ! -f "$BASE_DIR/jenkins-autocontido.tar" ]; then
+  echo "📦 A guardar imagem Jenkins como tar..."
+  docker save -o "$BASE_DIR/jenkins-autocontido.tar" ${REGISTRY_IP}:5000/jenkins-autocontido
+else
+  echo "✅ Imagem Jenkins já exportada localmente"
+fi
 
-echo "✅ [3/8] A fazer push da imagem jenkins-autocontido para o registry local..."
-docker tag jenkins-autocontido localhost:5000/jenkins-autocontido
+if [ ! -f "$BASE_DIR/jenkins-autocontido.tar" ]; then
+  echo "❌ Erro: Falhou a criação de jenkins-autocontido.tar"
+  exit 1
+fi
 
-echo "✅ A configurar Docker para aceitar o registry local (localhost:5000)..."
-
-# Criar ou atualizar /etc/docker/daemon.json
-cat <<EOF > /etc/docker/daemon.json
-{
-  "insecure-registries": ["localhost:5000"]
-}
-EOF
-
-# Reiniciar o Docker
-systemctl restart docker
-
-# Aguardar que o Docker volte a responder
-sleep 5
-
-echo "✅ Docker configurado com suporte para registry local."
-
-
-docker push localhost:5000/jenkins-autocontido || {
+echo "✅ [3/8] A fazer push da imagem Jenkins para o registry local..."
+docker push ${REGISTRY_IP}:5000/jenkins-autocontido || {
   echo "❌ Falha ao fazer push da imagem Jenkins para o registry local."
   exit 1
 }
 
+echo "✅ A configurar Docker para aceitar o registry local (${REGISTRY_IP}:5000)..."
+
+cat <<EOF > /etc/docker/daemon.json
+{
+  "insecure-registries": ["${REGISTRY_IP}:5000"]
+}
+EOF
+
+systemctl restart docker
+sleep 5
+
+echo "✅ Docker configurado com suporte para registry local."
 
 echo "🔍 Validar que a imagem está no registry local..."
-curl -s http://localhost:5000/v2/_catalog | grep "jenkins-autocontido" || {
+curl -s http://${REGISTRY_IP}:5000/v2/_catalog | grep "jenkins-autocontido" || {
   echo "❌ A imagem não foi corretamente enviada para o registry local!"
   exit 1
 }
+
+# Obter workers via label Kubernetes
+WORKER_NODES=$(kubectl get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[*].metadata.name}')
+
+# Enviar imagem para os workers
+for NODE in $WORKER_NODES; do
+  IP=$(kubectl get node "$NODE" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
+  configurar_worker "$IP" "$REGISTRY_IP"
+done
+
 
 # ---------------------------
 # Jenkins container via Docker
