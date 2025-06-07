@@ -282,20 +282,38 @@ echo "🔍 A verificar se todos os workers têm a imagem jenkins-autocontido loc
 FALHA_IMAGEM=0
 
 for NODE in $WORKER_NODES; do
-  IP=$(kubectl get node $NODE -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
+  IP=$(kubectl get node "$NODE" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
   echo "🔎 Verificar imagem no worker $NODE ($IP)..."
 
-  ssh root@"$IP" "docker image inspect ${REGISTRY_IP}:5000/jenkins-autocontido:latest > /dev/null 2>&1"
-  if [ $? -ne 0 ]; then
-    echo "⚠️  Imagem não encontrada. A tentar fazer pull no worker $NODE..."
+  ssh -o StrictHostKeyChecking=no root@"$IP" bash -s <<EOF
+echo "📦 A verificar se a imagem existe localmente..."
+if ! docker image inspect ${REGISTRY_IP}:5000/jenkins-autocontido:latest > /dev/null 2>&1; then
+  echo "⚠️  Imagem não encontrada. A tentar pull com retries..."
 
-    ssh root@"$IP" "docker pull ${REGISTRY_IP}:5000/jenkins-autocontido:latest" || {
-      echo "❌ Falha ao fazer pull da imagem no worker $NODE ($IP)"
-      FALHA_IMAGEM=1
-    }
-  else
-    echo "✅ Imagem já presente no worker $NODE"
-  fi
+  RETRIES=5
+  SLEEP=3
+  COUNT=0
+
+  until docker pull ${REGISTRY_IP}:5000/jenkins-autocontido:latest; do
+    COUNT=\$((COUNT+1))
+    if [ \$COUNT -ge \$RETRIES ]; then
+      echo "❌ Falha após \$RETRIES tentativas de pull."
+      exit 1
+    fi
+    echo "⏳ Tentativa \$COUNT falhou. A aguardar \$SLEEP segundos antes de nova tentativa..."
+    sleep \$SLEEP
+    SLEEP=\$((SLEEP * 2))
+  done
+else
+  echo "✅ Imagem já está presente localmente."
+fi
+EOF
+
+  # Verificar se a imagem foi realmente puxada após o bloco ssh
+  ssh root@"$IP" docker image inspect ${REGISTRY_IP}:5000/jenkins-autocontido:latest > /dev/null 2>&1 || {
+    echo "❌ Falha confirmada no pull no worker $NODE ($IP)"
+    FALHA_IMAGEM=1
+  }
 done
 
 if [ "$FALHA_IMAGEM" -eq 1 ]; then
@@ -307,6 +325,7 @@ echo "✅ Todos os workers têm a imagem jenkins-autocontido. A avançar com o d
 
 kubectl apply -f k8s/deploy-jenkins.yaml
 kubectl apply -f k8s/service-jenkins.yaml
+
 
 
 sleep 40  # Dá tempo ao Jenkins para gerar o ficheiro
