@@ -2,15 +2,16 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: hello-nginx
+  namespace: default
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: hello-nginx
   template:
-  metadata:
-    name: hello-nginx
-    namespace: default
+    metadata:
+      labels:
+        app: hello-nginx
     spec:
       containers:
         - name: nginx
