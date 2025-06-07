@@ -1,446 +1,115 @@
 #!/bin/bash
 set -e
 
-BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORKER_NODES=("worker1" "worker2")
-REGISTRY_IP=$(hostname -I | awk '{print $1}')
-
-# ---------------------------
-# Função para instalar Docker
-# ---------------------------
-instalar_docker() {
-  echo "🔍 Docker não encontrado. A iniciar instalação..."
-  dnf install --nobest dnf-plugins-core epel-release
-  dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-  dnf install --nobest docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-  systemctl enable docker
-  systemctl start docker
-
-  if ! command -v docker &> /dev/null; then
-    echo "❌ Docker não foi instalado corretamente."
-    exit 1
-  fi
-
-  echo "✅ Docker instalado com sucesso!"
+log() {
+  echo -e "[$(date +'%H:%M:%S')] $@"
 }
 
+log "🚀 Início da configuração Jenkins-lab..."
+
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REGISTRY_IP=$(hostname -I | awk '{print $1}')
+WORKER_NODES=$(kubectl get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[*].metadata.name}')
+
+# -------------------------------
+# Preparar cache Docker (se necessário)
+# -------------------------------
 preparar_cache_docker_rpms() {
-  echo "📦 A preparar cache local dos pacotes Docker..."
-
-  CACHE_DIR="./docker_rpm_cache"
+  log "📦 A preparar cache local dos pacotes Docker..."
+  CACHE_DIR="$BASE_DIR/docker_rpm_cache"
   mkdir -p "$CACHE_DIR"
-
-  # Instalar repositórios e preparar cache
   dnf install -y dnf-plugins-core epel-release
   dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-
-  # Download dos pacotes necessários e dependências
   dnf download --resolve --alldeps --downloaddir="$CACHE_DIR" \
     docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-  echo "✅ Cache local criada em $CACHE_DIR"
+  log "✅ Cache local criada em $CACHE_DIR"
 }
 
-# 🔁 Geração da imagem .tar (antes do loop)
+if [ ! -d "$BASE_DIR/docker_rpm_cache" ] || [ -z "$(ls -A "$BASE_DIR/docker_rpm_cache")" ]; then
+  preparar_cache_docker_rpms
+else
+  log "✅ Cache de pacotes Docker já existente."
+fi
+
+# -------------------------------
+# Geração da imagem Jenkins tar
+# -------------------------------
 if [ ! -f "$BASE_DIR/jenkins-autocontido.tar" ]; then
-  echo "📦 A guardar imagem Jenkins como tar..."
+  log "📦 A guardar imagem Jenkins como tar..."
   docker save -o "$BASE_DIR/jenkins-autocontido.tar" jenkins-autocontido:latest
 else
-  echo "✅ Imagem Jenkins já exportada localmente"
+  log "✅ Imagem Jenkins já exportada localmente"
 fi
 
 if [ ! -f "$BASE_DIR/jenkins-autocontido.tar" ]; then
-  echo "❌ Erro: Falhou a criação de jenkins-autocontido.tar"
+  log "❌ Erro: Falhou a criação de jenkins-autocontido.tar"
   exit 1
 fi
 
-# 🔧 Função de configuração remota
+# -------------------------------
+# Função de configuração remota
+# -------------------------------
 configurar_worker() {
   local WORKER_IP="$1"
   local REGISTRY_IP="$2"
 
-  echo "🔧 A preparar configuração no worker $WORKER_IP..."
+  log "🔧 A preparar configuração no worker $WORKER_IP..."
 
-  echo "🌐 A testar conectividade com $WORKER_IP..."
   ping -c 2 "$WORKER_IP" > /dev/null || {
-    echo "❌ ICMP falhou."
+    log "❌ ICMP falhou para $WORKER_IP"
     return 1
   }
 
-  echo "🔍 A verificar acesso SSH root@$WORKER_IP..."
   if ! ssh -o BatchMode=yes root@"$WORKER_IP" 'echo ok' &>/dev/null; then
-    echo "⚠️  SSH sem password falhou. A tentar ssh-copy-id..."
+    log "⚠️  SSH sem password falhou. A tentar ssh-copy-id..."
     ssh-copy-id -f root@"$WORKER_IP" || {
-      echo "❌ ssh-copy-id falhou."
+      log "❌ ssh-copy-id falhou para $WORKER_IP"
       return 1
     }
   fi
 
-  echo "🧠 A verificar se o worker tem menos de 2GB de RAM..."
   RAM_MB=$(ssh root@"$WORKER_IP" "free -m | awk '/^Mem:/ { print \$2 }'")
   if [ "$RAM_MB" -lt 2000 ]; then
-    echo "➕ A criar swapfile de 2GB no worker $WORKER_IP..."
+    log "➕ A criar swapfile no worker $WORKER_IP..."
     ssh root@"$WORKER_IP" "fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile"
     ssh root@"$WORKER_IP" "grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab"
   else
-    echo "✅ O worker tem RAM suficiente. Swap não necessária."
+    log "✅ RAM suficiente no worker $WORKER_IP"
   fi
 
-  echo "📤 A copiar cache de RPMs para o worker..."
-  scp -r "$BASE_DIR/docker_rpm_cache" root@"$WORKER_IP":/root/ || {
-    echo "❌ Falha ao copiar pacotes RPM para $WORKER_IP"
-    return 1
-  }
+  log "📤 A copiar cache RPMs para $WORKER_IP..."
+  scp -r "$BASE_DIR/docker_rpm_cache" root@"$WORKER_IP":/root/
 
-  echo "🐳 A configurar Docker remotamente..."
+  log "🐳 A configurar Docker no worker $WORKER_IP..."
   ssh root@"$WORKER_IP" bash -s <<EOF
 if ! command -v docker &>/dev/null; then
-  echo "🧱 Docker não encontrado. A instalar via cache local..."
   dnf install -y /root/docker_rpm_cache/*.rpm
-else
-  echo "✅ Docker já está instalado."
 fi
-
-echo "⚙️  A configurar /etc/docker/daemon.json com registry inseguro..."
 mkdir -p /etc/docker
 echo '{ "insecure-registries": ["$REGISTRY_IP:5000"] }' > /etc/docker/daemon.json
-
-echo "🔄 A reiniciar Docker..."
-systemctl restart docker || echo "⚠️  Falha ao reiniciar Docker."
-
-echo "♻️  A reiniciar kubelet..."
+systemctl restart docker
 systemctl daemon-reexec
 systemctl restart kubelet
 EOF
 
-  echo "📤 A enviar imagem Jenkins para o worker..."
+  log "📤 A transferir imagem Jenkins para o worker..."
   scp "$BASE_DIR/jenkins-autocontido.tar" root@"$WORKER_IP":/root/
-
-  echo "📦 A carregar imagem Jenkins localmente no worker..."
   ssh root@"$WORKER_IP" "docker load -i /root/jenkins-autocontido.tar && rm /root/jenkins-autocontido.tar"
 }
 
-# 🔁 Loop de configuração
-for NODE in "${WORKER_NODES[@]}"; do
+# -------------------------------
+# Loop de configuração dos workers
+# -------------------------------
+log "==================== FASE: CONFIGURAR WORKERS ===================="
+
+for NODE in $WORKER_NODES; do
   IP=$(kubectl get node "$NODE" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
   configurar_worker "$IP" "$REGISTRY_IP"
 done
-  
-# ---------------------------
-# Função para instalar Java 17
-# ---------------------------
 
+# -------------------------------
+# Limpeza final (opcional)
+# -------------------------------
+rm -f "$BASE_DIR/jenkins-autocontido.tar"
 
-instalar_java() {
-  echo "🔍 A instalar Java ..."
-  dnf install -y java-17-openjdk
-  if ! command -v java &> /dev/null; then
-    echo "❌ Falha ao instalar Java."
-    exit 1
-  fi
-  echo "✅ Java instalado com sucesso."
-}
-
-# ------------------------------
-# Verificação e instalação base
-# ------------------------------
-if ! command -v docker &> /dev/null; then
-    instalar_docker
-else
-  echo "✅ Docker já está instalado."
-fi
-
-echo "🔐 A verificar se existe chave SSH..."
-
-if [ ! -f ~/.ssh/id_rsa.pub ]; then
-  echo "🔧 Nenhuma chave encontrada. A gerar uma nova chave SSH RSA sem passphrase..."
-  ssh-keygen -t rsa -b 4096 -N "" -f ~/.ssh/id_rsa || {
-    echo "❌ Erro ao gerar a chave SSH. Abortar."
-    exit 1
-  }
-  echo "✅ Chave SSH criada em ~/.ssh/id_rsa.pub"
-else
-  echo "✅ Chave SSH já existe."
-fi
-
-echo "🔎 A detetar workers no cluster Kubernetes..."
-
-if [ ! -d "$BASE_DIR/docker_rpm_cache" ]; then
-  preparar_cache_docker_rpms
-else
-  echo "✅ Cache de pacotes Docker já existe em $BASE_DIR/docker_rpm_cache"
-fi
-
-REGISTRY_IP=$(hostname -I | awk '{print $1}')
-WORKER_NODES=$(kubectl get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[*].metadata.name}')
-
-for NODE in $WORKER_NODES; do
-  IP=$(kubectl get node $NODE -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
-  configurar_worker  "$IP" "$REGISTRY_IP"
-done
-
-# ---------------------------
-# Jenkins Registry + Imagem
-# ---------------------------
-echo "📥 A garantir que a imagem registry:2 está disponível localmente..."
-docker pull registry:2
-
-echo "✅ [1/8] Iniciando Docker Registry local..."
-if docker ps -a --format '{{.Names}}' | grep -Eq '^registry$'; then
-  docker rm -f registry
-fi
-docker run -d --name registry --restart=always -p 5000:5000 registry:2
-
-echo "✅ [2/8] Construindo imagem Jenkins personalizada..."
-docker build -t jenkins-autocontido -f Dockerfile.jenkins .
-docker tag jenkins-autocontido ${REGISTRY_IP}:5000/jenkins-autocontido
-
-echo "📦 A exportar imagem Jenkins como tarball..."
-docker save ${REGISTRY_IP}:5000/jenkins-autocontido:latest -o jenkins-autocontido.tar
-
-echo "✅ [3/8] A fazer push da imagem jenkins-autocontido para o registry local..."
-docker tag jenkins-autocontido localhost:5000/jenkins-autocontido
-
-echo "✅ A configurar Docker para aceitar o registry local (localhost:5000)..."
-
-# Criar ou atualizar /etc/docker/daemon.json
-cat <<EOF > /etc/docker/daemon.json
-{
-  "insecure-registries": ["localhost:5000"]
-}
-EOF
-
-# Reiniciar o Docker
-systemctl restart docker
-
-# Aguardar que o Docker volte a responder
-sleep 5
-
-echo "✅ Docker configurado com suporte para registry local."
-
-
-docker push localhost:5000/jenkins-autocontido || {
-  echo "❌ Falha ao fazer push da imagem Jenkins para o registry local."
-  exit 1
-}
-
-
-echo "🔍 Validar que a imagem está no registry local..."
-curl -s http://localhost:5000/v2/_catalog | grep "jenkins-autocontido" || {
-  echo "❌ A imagem não foi corretamente enviada para o registry local!"
-  exit 1
-}
-
-# ---------------------------
-# Jenkins container via Docker
-# ---------------------------
-#echo "✅ [3/8] A iniciar Jenkins standalone..."
-
-# Remove o Jenkins anterior se existir
-#if docker ps -a --format '{{.Names}}' | grep -Eq '^jenkins$'; then
-#  echo "⚠️  Jenkins já existia. A remover..."
-#  docker rm -f jenkins
-#fi
-
-#docker run -d \
-#  --name jenkins \
-#  -u 0 \
-#  --restart=always \
-#  -p 8080:8080 -p 50000:50000 \
-#  -v jenkins_home:/var/jenkins_home \
-#  -v /var/run/docker.sock:/var/run/docker.sock \
-#  jenkins-autocontido || {
-#    echo "❌ Falha ao iniciar o container do Jenkins."
-#    exit 1
-#}
-
-# ---------------------------
-# Jenkins via Kubernetes YAMLs
-# ---------------------------
-echo "✅ [4/8] Criar namespace Jenkins no cluster..."
-
-if kubectl get namespace jenkins &> /dev/null; then
-  echo "⚠️  Namespace 'jenkins' já existe. A eliminar..."
-  kubectl delete namespace jenkins --wait=true
-  echo "✅ Namespace antigo removido com sucesso."
-fi
-
-kubectl create namespace jenkins
-
-echo "🔎 A validar todos os ficheiros YAML (syntaxe e recursos)..."
-for file in k8s/*.yaml; do
-  if [ ! -f "$file" ]; then
-    echo "❌ Ficheiro não encontrado: $file"
-    exit 1
-  fi
-  echo "🧪 Validar $file..."
-  kubectl apply --dry-run=client -f "$file" > /dev/null || {
-    echo "❌ Erro de validação: $file"
-    exit 1
-  }
-done
-
-kubectl apply -f k8s/rbac-jenkins-admin.yaml
-
-
-echo "✅ [5/8] Aplicar permissões RBAC (ServiceAccount + ClusterRole)..."
-kubectl apply -f k8s/sa-jenkins.yaml
-
-echo "✅ [6/8] Criar volume persistente Jenkins..."
-
-# Apagar PVC antigo se existir
-if kubectl get pvc -n jenkins jenkins-pvc &>/dev/null; then
-  echo "⚠️  PVC jenkins-pvc já existe. A eliminar..."
-  kubectl delete pvc jenkins-pvc -n jenkins --wait=true
-fi
-
-# Apagar PV antigo se existir
-if kubectl get pv jenkins-pv &>/dev/null; then
-  echo "⚠️  PV jenkins-pv já existe. A eliminar..."
-  kubectl delete pv jenkins-pv --wait=true
-fi
-
-mkdir -p /mnt/jenkins && chmod 755 /mnt/jenkins && chown -R 1000:1000 /mnt/jenkins
-kubectl apply -f k8s/volume-jenkins.yaml
-
-echo "⏳ A Aguardar que o PVC fique ligado ao PV..."
-until kubectl get pvc -n jenkins jenkins-pvc -o jsonpath='{.status.phase}' | grep -q "Bound"; do
-  sleep 2
-done
-echo "✅ PVC ligado ao PV com sucesso."
-
-
-echo "✅ [7/8] Aplicar deployment e service Kubernetes..."
-
-REGISTRY_IP=$(hostname -I | awk '{print $1}')
-sed -i "s|image: .*:5000/jenkins-autocontido|image: ${REGISTRY_IP}:5000/jenkins-autocontido|" k8s/deploy-jenkins.yaml
-
-echo "🔍 A verificar se todos os workers têm a imagem jenkins-autocontido localmente..."
-
-FALHA_IMAGEM=0
-
-for NODE in $WORKER_NODES; do
-  IP=$(kubectl get node "$NODE" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
-  echo "🔎 Verificar imagem no worker $NODE ($IP)..."
-
-  if ssh root@"$IP" docker image inspect "${REGISTRY_IP}:5000/jenkins-autocontido:latest" > /dev/null 2>&1; then
-    echo "✅ Imagem encontrada no worker $NODE"
-  else
-    echo "❌ Imagem NÃO encontrada no worker $NODE ($IP)"
-    FALHA_IMAGEM=1
-  fi
-done
-
-if [ "$FALHA_IMAGEM" -eq 1 ]; then
-  echo "🛑 Erro: Pelo menos um dos workers não tem a imagem carregada. Abortar deployment."
-  exit 1
-fi
-
-echo "✅ Todos os workers têm a imagem jenkins-autocontido. A avançar com o deployment..."
-
-kubectl apply -f k8s/deploy-jenkins.yaml
-kubectl apply -f k8s/service-jenkins.yaml
-
-sleep 40  # Dá tempo ao Jenkins para gerar o ficheiro
-
-instalar_java
-
-IP=$(hostname -I | awk '{print $1}')
-#echo -e "\n✅ Jenkins a correr em: http://localhost:8080 ou http://$IP:8080"
-#echo -e "📦 Jenkins Kubernetes exposto via NodePort em: http://$IP:32000 (caso ativado)\n"
-JENKINS_URL="http://$IP:32000"
-
-#ADMIN_PWD_FILE="/var/lib/docker/volumes/jenkins_home/_data/secrets/initialAdminPassword"
-#echo "⏳ A aguardar password inicial do Jenkins..."
-
-#until [ -f "$ADMIN_PWD_FILE" ]; do
-#  sleep 2
-#done
-
-#ADMIN_PWD=$(cat "$ADMIN_PWD_FILE")
-
-echo "⏳ A aguardar que o pod do Jenkins fique em estado Running ..."
-TIMEOUT=180
-SECONDS_WAITED=0
-
-while true; do
-  STATUS=$(kubectl get pod -n jenkins -l app=jenkins -o jsonpath="{.items[0].status.phase}" 2>/dev/null || echo "Erro")
-  if [[ "$STATUS" == "Running" ]]; then
-    echo "✅ Jenkins está em execução."
-    break
-  fi
-  if (( SECONDS_WAITED >= TIMEOUT )); then
-    echo "❌ Timeout: Jenkins não ficou pronto em $TIMEOUT segundos."
-    exit 1
-  fi
-  sleep 3
-  ((SECONDS_WAITED+=3))
-done
-
-
-ADMIN_POD=$(kubectl get pods -n jenkins -l app=jenkins -o jsonpath="{.items[0].metadata.name}")
-ADMIN_PWD=$(kubectl -n jenkins exec -it "$ADMIN_POD" -- cat /var/jenkins_home/secrets/initialAdminPassword | tr -d '\r')
-
-
-echo -e "✅ Password inicial do Jenkins: \\e[1;32m$ADMIN_PWD\\e[0m"
-
-# ---------------------------
-# Jenkins CLI: criar job + build
-# ---------------------------
-echo "✅ [8/8] Criar job hello-nginx-pipeline..."
-
-echo "⏳ A aguardar que o Jenkins aceite conexões HTTP..."
-
-#until curl -s http://localhost:8080/login > /dev/null; do
-#  sleep 2
-#done
-
-#wget -q http://localhost:8080/jnlpJars/jenkins-cli.jar -O jenkins-cli.jar
-
-until curl -s "$JENKINS_URL/login" > /dev/null; do
-  sleep 2
-done
-
-wget -q "$JENKINS_URL/jnlpJars/jenkins-cli.jar" -O jenkins-cli.jar
-
-#java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:$ADMIN_PWD install-plugin git docker-workflow kubernetes-cli workflow-aggregator ws-cleanup -restart
-java -jar jenkins-cli.jar -s $JENKINS_URL -auth admin:$ADMIN_PWD install-plugin git docker-workflow kubernetes-cli workflow-aggregator ws-cleanup -restart
-
-echo "⏳ A aguardar que o Jenkins esteja pronto a aceitar ligações..."
-
-until curl -s "$JENKINS_URL/login" | grep -q "<title>Sign in"; do
-  sleep 3
-done
-
-echo "⏳ A aguardar reinício do Jenkins após plugins..."
-sleep 40
-
-cat <<EOF > hello-nginx.xml
-<flow-definition plugin="workflow-job">
-  <definition class="org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition" plugin="workflow-cps">
-    <scm class="hudson.plugins.git.GitSCM" plugin="git">
-      <userRemoteConfigs>
-        <hudson.plugins.git.UserRemoteConfig>
-          <url>https://github.com/andrerpxavier/Jenkins-lab.git</url>
-        </hudson.plugins.git.UserRemoteConfig>
-      </userRemoteConfigs>
-      <branches>
-        <hudson.plugins.git.BranchSpec>
-          <name>*/main</name>
-        </hudson.plugins.git.BranchSpec>
-      </branches>
-    </scm>
-    <scriptPath>Jenkinsfile</scriptPath>
-  </definition>
-  <triggers/>
-</flow-definition>
-EOF
-
-#java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:$ADMIN_PWD create-job hello-nginx-pipeline < hello-nginx.xml
-#java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:$ADMIN_PWD build hello-nginx-pipeline
-java -jar jenkins-cli.jar -s $JENKINS_URL -auth admin:$ADMIN_PWD create-job hello-nginx-pipeline < hello-nginx.xml
-java -jar jenkins-cli.jar -s $JENKINS_URL -auth admin:$ADMIN_PWD build hello-nginx-pipeline
-
-
-echo "🎉 Jenkins configurado com sucesso e pipeline executado!"
-
+log "🎉 Configuração dos workers concluída com sucesso."
