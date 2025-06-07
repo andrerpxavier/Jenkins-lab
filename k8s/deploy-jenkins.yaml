@@ -16,7 +16,7 @@ spec:
       serviceAccountName: jenkins-admin
       containers:
         - name: jenkins
-          image: jenkins-autocontido
+          image: localhost:5000/jenkins-autocontido:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
