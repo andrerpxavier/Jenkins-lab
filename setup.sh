@@ -56,8 +56,8 @@ echo "✅ [2/8] Construindo imagem Jenkins personalizada..."
 docker build -t jenkins-autocontido -f Dockerfile.jenkins .
 
 echo "✅ [3/8] A fazer push da imagem jenkins-autocontido para o registry local..."
-docker tag jenkins-autocontido localhost:5000/jenkins-autocontido:latest
-docker push localhost:5000/jenkins-autocontido:latest
+docker tag jenkins-autocontido localhost:5000/jenkins-autocontido
+docker push localhost:5000/jenkins-autocontido
 
 # ---------------------------
 # Jenkins container via Docker
