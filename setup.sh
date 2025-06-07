@@ -57,7 +57,33 @@ docker build -t jenkins-autocontido -f Dockerfile.jenkins .
 
 echo "✅ [3/8] A fazer push da imagem jenkins-autocontido para o registry local..."
 docker tag jenkins-autocontido localhost:5000/jenkins-autocontido
+
+echo "✅ A configurar Docker para aceitar o registry local (localhost:5000)..."
+
+# Criar ou atualizar /etc/docker/daemon.json
+cat <<EOF > /etc/docker/daemon.json
+{
+  "insecure-registries": ["localhost:5000"]
+}
+EOF
+
+# Reiniciar o Docker
+systemctl restart docker
+
+# Aguardar que o Docker volte a responder
+sleep 5
+
+echo "✅ Docker configurado com suporte para registry local inseguro."
+
+
 docker push localhost:5000/jenkins-autocontido
+
+
+echo "🔍 Validar que a imagem está no registry local..."
+curl -s http://localhost:5000/v2/_catalog | grep "jenkins-autocontido" || {
+  echo "❌ A imagem não foi corretamente enviada para o registry local!"
+  exit 1
+}
 
 # ---------------------------
 # Jenkins container via Docker
@@ -94,6 +120,16 @@ if kubectl get namespace jenkins &> /dev/null; then
 fi
 
 kubectl create namespace jenkins
+
+echo "🔎 A verificar existência de todos os ficheiros YAML necessários..."
+for file in k8s/*.yaml; do
+  if [ ! -f "$file" ]; then
+    echo "❌ Ficheiro não encontrado: $file"
+    exit 1
+  else
+    echo "✅ Encontrado: $file"
+  fi
+done
 kubectl apply -f k8s/rbac-jenkins-admin.yaml
 
 
