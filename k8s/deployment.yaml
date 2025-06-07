@@ -8,9 +8,9 @@ spec:
     matchLabels:
       app: hello-nginx
   template:
-    metadata:
-      labels:
-        app: hello-nginx
+  metadata:
+    name: hello-nginx
+    namespace: default
     spec:
       containers:
         - name: nginx
