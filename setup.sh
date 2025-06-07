@@ -19,6 +19,57 @@ instalar_docker() {
   echo "✅ Docker instalado com sucesso!"
 }
 
+configurar_docker_worker() {
+  WORKER_IP=$1
+  REGISTRY_IP=$2
+  echo "🔧 A preparar configuração no worker $WORKER_IP..."
+
+  echo "🔍 A verificar acesso SSH root@$WORKER_IP..."
+  if ! ssh -o BatchMode=yes -o ConnectTimeout=5 root@$WORKER_IP 'echo SSH OK' 2>/dev/null | grep -q 'SSH OK'; then
+    echo "⚠️  Acesso SSH sem password falhou. Vamos tentar configurar com ssh-copy-id..."
+    if [ -f ~/.ssh/id_rsa.pub ]; then
+      ssh-copy-id root@$WORKER_IP || {
+        echo "❌ Não foi possível configurar acesso SSH ao worker $WORKER_IP."
+        return 1
+      }
+    else
+      echo "❌ Chave SSH não encontrada (~/.ssh/id_rsa.pub). Aborta configuração para $WORKER_IP."
+      return 1
+    fi
+  else
+    echo "✅ Acesso SSH sem password já está funcional."
+  fi
+
+  echo "🔧 A configurar Docker em $WORKER_IP..."
+
+  ssh root@$WORKER_IP bash -s <<EOF
+if ! command -v docker &> /dev/null; then
+  echo "🧱 Docker não encontrado. A instalar via dnf..."
+  dnf install -y docker
+  systemctl enable docker --now
+else
+  echo "✅ Docker já está instalado."
+fi
+
+echo "⚙️  A configurar /etc/docker/daemon.json com registry inseguro..."
+mkdir -p /etc/docker
+cat <<JSON > /etc/docker/daemon.json
+{
+  "insecure-registries": ["$REGISTRY_IP:5000"]
+}
+JSON
+
+echo "🔄 A reiniciar Docker..."
+systemctl daemon-reexec
+systemctl restart docker
+
+sleep 2
+echo "🔍 A testar ligação ao registry: http://$REGISTRY_IP:5000..."
+curl --max-time 5 http://$REGISTRY_IP:5000/v2/_catalog || echo '❌ Erro ao contactar o registry'
+EOF
+}
+
+  
 # ---------------------------
 # Função para instalar Java 17
 # ---------------------------
@@ -42,6 +93,29 @@ if ! command -v docker &> /dev/null; then
 else
   echo "✅ Docker já está instalado."
 fi
+
+echo "🔐 A verificar se existe chave SSH..."
+
+if [ ! -f ~/.ssh/id_rsa.pub ]; then
+  echo "🔧 Nenhuma chave encontrada. A gerar uma nova chave SSH RSA sem passphrase..."
+  ssh-keygen -t rsa -b 4096 -N "" -f ~/.ssh/id_rsa || {
+    echo "❌ Erro ao gerar a chave SSH. Abortar."
+    exit 1
+  }
+  echo "✅ Chave SSH criada em ~/.ssh/id_rsa.pub"
+else
+  echo "✅ Chave SSH já existe."
+fi
+
+echo "🔎 A detetar workers no cluster Kubernetes..."
+
+REGISTRY_IP=$(hostname -I | awk '{print $1}')
+WORKER_NODES=$(kubectl get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[*].metadata.name}')
+
+for NODE in $WORKER_NODES; do
+  IP=$(kubectl get node $NODE -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
+  configurar_docker_worker "$IP" "$REGISTRY_IP"
+done
 
 # ---------------------------
 # Jenkins Registry + Imagem
