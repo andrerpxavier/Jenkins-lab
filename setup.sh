@@ -92,16 +92,14 @@ systemctl restart docker || echo "⚠️  Falha ao reiniciar Docker."
 echo "♻️  A reiniciar kubelet..."
 systemctl daemon-reexec
 systemctl restart kubelet
-
-echo "📤 A enviar imagem Jenkins para o worker..."
-scp jenkins-autocontido.tar root@"$WORKER_IP":/root/
-
-echo "📦 A carregar imagem Jenkins localmente no worker..."
-ssh root@"$WORKER_IP" "docker load -i /root/jenkins-autocontido.tar && rm /root/jenkins-autocontido.tar"
-
 EOF
-}
 
+  echo "📤 A enviar imagem Jenkins para o worker..."
+  scp jenkins-autocontido.tar root@"$WORKER_IP":/root/
+
+  echo "📦 A carregar imagem Jenkins localmente no worker..."
+  ssh root@"$WORKER_IP" "docker load -i /root/jenkins-autocontido.tar && rm /root/jenkins-autocontido.tar"
+}
   
 # ---------------------------
 # Função para instalar Java 17
@@ -296,35 +294,18 @@ for NODE in $WORKER_NODES; do
   IP=$(kubectl get node "$NODE" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
   echo "🔎 Verificar imagem no worker $NODE ($IP)..."
 
-  ssh -o StrictHostKeyChecking=no root@"$IP" bash -s <<EOF
-echo "📦 A verificar se a imagem existe localmente..."
-if ! docker image inspect ${REGISTRY_IP}:5000/jenkins-autocontido:latest > /dev/null 2>&1; then
-  echo "⚠️  Imagem não encontrada. A tentar pull com retries..."
+  if ! ssh -o StrictHostKeyChecking=no root@"$IP" docker image inspect "${REGISTRY_IP}:5000/jenkins-autocontido:latest" > /dev/null 2>&1; then
+    echo "⚠️  Imagem não encontrada no worker $NODE. A tentar fazer pull manualmente..."
 
-  RETRIES=5
-  SLEEP=3
-  COUNT=0
-
-  until docker pull ${REGISTRY_IP}:5000/jenkins-autocontido:latest; do
-    COUNT=\$((COUNT+1))
-    if [ \$COUNT -ge \$RETRIES ]; then
-      echo "❌ Falha após \$RETRIES tentativas de pull."
-      exit 1
+    if ! ssh root@"$IP" docker pull "${REGISTRY_IP}:5000/jenkins-autocontido:latest"; then
+      echo "❌ Falha ao fazer pull da imagem no worker $NODE ($IP)"
+      FALHA_IMAGEM=1
+    else
+      echo "✅ Pull bem-sucedido no worker $NODE"
     fi
-    echo "⏳ Tentativa \$COUNT falhou. A aguardar \$SLEEP segundos antes de nova tentativa..."
-    sleep \$SLEEP
-    SLEEP=\$((SLEEP * 2))
-  done
-else
-  echo "✅ Imagem já está presente localmente."
-fi
-EOF
-
-  # Verificar se a imagem foi realmente puxada após o bloco ssh
-  ssh root@"$IP" docker image inspect ${REGISTRY_IP}:5000/jenkins-autocontido:latest > /dev/null 2>&1 || {
-    echo "❌ Falha confirmada no pull no worker $NODE ($IP)"
-    FALHA_IMAGEM=1
-  }
+  else
+    echo "✅ Imagem já está presente no worker $NODE"
+  fi
 done
 
 if [ "$FALHA_IMAGEM" -eq 1 ]; then
@@ -336,8 +317,6 @@ echo "✅ Todos os workers têm a imagem jenkins-autocontido. A avançar com o d
 
 kubectl apply -f k8s/deploy-jenkins.yaml
 kubectl apply -f k8s/service-jenkins.yaml
-
-
 
 sleep 40  # Dá tempo ao Jenkins para gerar o ficheiro
 
