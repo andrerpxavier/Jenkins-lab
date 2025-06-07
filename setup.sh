@@ -38,35 +38,34 @@ preparar_cache_docker_rpms() {
 
 configurar_worker() {
   local WORKER_IP="$1"
+
   echo "🔧 A preparar configuração no worker $WORKER_IP..."
 
   echo "🌐 A testar conectividade com $WORKER_IP..."
-  if ! ping -c 2 "$WORKER_IP" > /dev/null 2>&1; then
-    echo "❌ Worker $WORKER_IP está inacessível por ICMP. A saltar..."
+  ping -c 2 "$WORKER_IP" > /dev/null || {
+    echo "❌ ICMP falhou."
     return 1
-  fi
-
-  if ! nc -z "$WORKER_IP" 22; then
-    echo "❌ Porta SSH (22) inacessível em $WORKER_IP. A saltar..."
-    return 1
-  fi
+  }
 
   echo "🔍 A verificar acesso SSH root@$WORKER_IP..."
-  if ssh -o BatchMode=yes -o ConnectTimeout=5 root@"$WORKER_IP" 'echo ok' 2>/dev/null | grep -q ok; then
-    echo "✅ Acesso SSH sem password já está funcional."
-  else
-    echo "⚠️  Acesso SSH sem password falhou. Vamos tentar configurar com ssh-copy-id..."
-    if ! ssh-copy-id -f root@"$WORKER_IP"; then
-      echo "❌ Falha ao instalar chave SSH em $WORKER_IP. A saltar..."
+  if ! ssh -o BatchMode=yes root@"$WORKER_IP" 'echo ok' &>/dev/null; then
+    echo "⚠️  SSH sem password falhou. A tentar ssh-copy-id..."
+    ssh-copy-id -f root@"$WORKER_IP" || {
+      echo "❌ ssh-copy-id falhou."
       return 1
-    fi
+    }
   fi
 
-  echo "🐳 A instalar/configurar Docker em $WORKER_IP..."
+  echo "📤 A copiar cache de RPMs para o worker..."
+  scp -r ./docker_rpm_cache root@"$WORKER_IP":/root/ || {
+    echo "❌ Falha ao copiar pacotes RPM para $WORKER_IP"
+    return 1
+  }
+
+  echo "🐳 A configurar Docker remotamente..."
   ssh root@"$WORKER_IP" bash -s <<'EOF'
 if ! command -v docker &>/dev/null; then
   echo "🧱 Docker não encontrado. A instalar via cache local..."
-  mkdir -p /root/docker_rpm_cache && cp -r ./docker_rpm_cache/* /root/docker_rpm_cache/
   dnf install -y /root/docker_rpm_cache/*.rpm
 else
   echo "✅ Docker já está instalado."
@@ -80,11 +79,11 @@ cat <<JSON > /etc/docker/daemon.json
 }
 JSON
 
-echo "🔄 A reiniciar Docker..."
 systemctl daemon-reexec
-systemctl restart docker || echo "⚠️  Falha ao reiniciar Docker. Verifica manualmente."
+systemctl restart docker || echo "⚠️  Falha ao reiniciar Docker."
 EOF
 }
+
 
 
   
