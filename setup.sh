@@ -287,19 +287,23 @@ for NODE in $WORKER_NODES; do
 
   ssh root@"$IP" "docker image inspect ${REGISTRY_IP}:5000/jenkins-autocontido:latest > /dev/null 2>&1"
   if [ $? -ne 0 ]; then
-    echo "❌ Imagem não encontrada no worker $NODE ($IP)"
-    FALHA_IMAGEM=1
+    echo "⚠️  Imagem não encontrada. A tentar fazer pull no worker $NODE..."
+
+    ssh root@"$IP" "docker pull ${REGISTRY_IP}:5000/jenkins-autocontido:latest" || {
+      echo "❌ Falha ao fazer pull da imagem no worker $NODE ($IP)"
+      FALHA_IMAGEM=1
+    }
   else
-    echo "✅ Imagem encontrada no worker $NODE ($IP)"
+    echo "✅ Imagem já presente no worker $NODE"
   fi
 done
 
 if [ "$FALHA_IMAGEM" -eq 1 ]; then
-  echo "🛑 Erro: Pelo menos um dos workers não tem a imagem jenkins-autocontido local. Abortar deploy."
+  echo "🛑 Erro: Pelo menos um dos workers não conseguiu obter a imagem jenkins-autocontido. Abortar deploy."
   exit 1
 fi
 
-echo "✅ Todos os workers têm a imagem localmente. A avançar com o deployment do Jenkins..."
+echo "✅ Todos os workers têm a imagem jenkins-autocontido. A avançar com o deployment..."
 
 kubectl apply -f k8s/deploy-jenkins.yaml
 kubectl apply -f k8s/service-jenkins.yaml
