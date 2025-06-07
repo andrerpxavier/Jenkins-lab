@@ -148,6 +148,9 @@ done
 # ---------------------------
 # Jenkins Registry + Imagem
 # ---------------------------
+echo "📥 A garantir que a imagem registry:2 está disponível localmente..."
+docker pull registry:2
+
 echo "✅ [1/8] Iniciando Docker Registry local..."
 if docker ps -a --format '{{.Names}}' | grep -Eq '^registry$'; then
   docker rm -f registry
