@@ -43,7 +43,7 @@ pipeline {
         export KUBECONFIG=/tmp/kubeconfig
       
         SERVER="https://kubernetes.default.svc"
-        NAMESPACE=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+        NAMESPACE="default"
         TOKEN=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
         CA_CERT="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
       
