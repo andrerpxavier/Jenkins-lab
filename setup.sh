@@ -121,15 +121,19 @@ fi
 
 kubectl create namespace jenkins
 
-echo "🔎 A verificar existência de todos os ficheiros YAML necessários..."
+echo "🔎 A validar todos os ficheiros YAML (syntaxe e recursos)..."
 for file in k8s/*.yaml; do
   if [ ! -f "$file" ]; then
     echo "❌ Ficheiro não encontrado: $file"
     exit 1
-  else
-    echo "✅ Encontrado: $file"
   fi
+  echo "🧪 Validar $file..."
+  kubectl apply --dry-run=client -f "$file" > /dev/null || {
+    echo "❌ Erro de validação: $file"
+    exit 1
+  }
 done
+
 kubectl apply -f k8s/rbac-jenkins-admin.yaml
 
 
@@ -163,11 +167,25 @@ JENKINS_URL="http://$IP:32000"
 #done
 
 #ADMIN_PWD=$(cat "$ADMIN_PWD_FILE")
-echo "⏳ A aguardar que o Jenkins esteja em estado Running..."
 
-until kubectl get pod -n jenkins -l app=jenkins -o jsonpath="{.items[0].status.phase}" 2>/dev/null | grep -q "Running"; do
-  sleep 2
+echo "⏳ A aguardar que o pod do Jenkins fique em estado Running ..."
+TIMEOUT=180
+SECONDS_WAITED=0
+
+while true; do
+  STATUS=$(kubectl get pod -n jenkins -l app=jenkins -o jsonpath="{.items[0].status.phase}" 2>/dev/null || echo "Erro")
+  if [[ "$STATUS" == "Running" ]]; then
+    echo "✅ Jenkins está em execução."
+    break
+  fi
+  if (( SECONDS_WAITED >= TIMEOUT )); then
+    echo "❌ Timeout: Jenkins não ficou pronto em $TIMEOUT segundos."
+    exit 1
+  fi
+  sleep 3
+  ((SECONDS_WAITED+=3))
 done
+
 
 ADMIN_POD=$(kubectl get pods -n jenkins -l app=jenkins -o jsonpath="{.items[0].metadata.name}")
 ADMIN_PWD=$(kubectl -n jenkins exec -it "$ADMIN_POD" -- cat /var/jenkins_home/secrets/initialAdminPassword | tr -d '\r')
