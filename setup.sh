@@ -1,13 +1,18 @@
 #!/bin/bash
 set -e
+
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKER_NODES=("worker1" "worker2")
+REGISTRY_IP=$(hostname -I | awk '{print $1}')
+
 # ---------------------------
 # Função para instalar Docker
 # ---------------------------
 instalar_docker() {
   echo "🔍 Docker não encontrado. A iniciar instalação..."
-  dnf install -y dnf-plugins-core epel-release
+  dnf install --nobest dnf-plugins-core epel-release
   dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-  dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  dnf install --nobest docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   systemctl enable docker
   systemctl start docker
 
@@ -36,6 +41,20 @@ preparar_cache_docker_rpms() {
   echo "✅ Cache local criada em $CACHE_DIR"
 }
 
+# 🔁 Geração da imagem .tar (antes do loop)
+if [ ! -f "$BASE_DIR/jenkins-autocontido.tar" ]; then
+  echo "📦 A guardar imagem Jenkins como tar..."
+  docker save -o "$BASE_DIR/jenkins-autocontido.tar" jenkins-autocontido:latest
+else
+  echo "✅ Imagem Jenkins já exportada localmente"
+fi
+
+if [ ! -f "$BASE_DIR/jenkins-autocontido.tar" ]; then
+  echo "❌ Erro: Falhou a criação de jenkins-autocontido.tar"
+  exit 1
+fi
+
+# 🔧 Função de configuração remota
 configurar_worker() {
   local WORKER_IP="$1"
   local REGISTRY_IP="$2"
@@ -68,7 +87,7 @@ configurar_worker() {
   fi
 
   echo "📤 A copiar cache de RPMs para o worker..."
-  scp -r ./docker_rpm_cache root@"$WORKER_IP":/root/ || {
+  scp -r "$BASE_DIR/docker_rpm_cache" root@"$WORKER_IP":/root/ || {
     echo "❌ Falha ao copiar pacotes RPM para $WORKER_IP"
     return 1
   }
@@ -94,24 +113,18 @@ systemctl daemon-reexec
 systemctl restart kubelet
 EOF
 
-  if [ ! -f jenkins-autocontido.tar ]; then
-    echo "📦 A guardar imagem Jenkins como tar..."
-    docker save -o jenkins-autocontido.tar jenkins-autocontido:latest
-  else
-    echo "✅ Imagem Jenkins já exportada localmente"
-  fi
-  
-  if [ ! -f jenkins-autocontido.tar ]; then
-    echo "❌ Erro: Falhou a criação de jenkins-autocontido.tar"
-    exit 1
-  fi
-
   echo "📤 A enviar imagem Jenkins para o worker..."
-  scp jenkins-autocontido.tar root@"$WORKER_IP":/root/
+  scp "$BASE_DIR/jenkins-autocontido.tar" root@"$WORKER_IP":/root/
 
   echo "📦 A carregar imagem Jenkins localmente no worker..."
   ssh root@"$WORKER_IP" "docker load -i /root/jenkins-autocontido.tar && rm /root/jenkins-autocontido.tar"
 }
+
+# 🔁 Loop de configuração
+for NODE in "${WORKER_NODES[@]}"; do
+  IP=$(kubectl get node "$NODE" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
+  configurar_worker "$IP" "$REGISTRY_IP"
+done
   
 # ---------------------------
 # Função para instalar Java 17
@@ -152,7 +165,11 @@ fi
 
 echo "🔎 A detetar workers no cluster Kubernetes..."
 
-preparar_cache_docker_rpms
+if [ ! -d "$BASE_DIR/docker_rpm_cache" ]; then
+  preparar_cache_docker_rpms
+else
+  echo "✅ Cache de pacotes Docker já existe em $BASE_DIR/docker_rpm_cache"
+fi
 
 REGISTRY_IP=$(hostname -I | awk '{print $1}')
 WORKER_NODES=$(kubectl get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[*].metadata.name}')
