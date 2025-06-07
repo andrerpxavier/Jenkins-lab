@@ -73,7 +73,7 @@ systemctl restart docker
 # Aguardar que o Docker volte a responder
 sleep 5
 
-echo "✅ Docker configurado com suporte para registry local inseguro."
+echo "✅ Docker configurado com suporte para registry local."
 
 
 docker push localhost:5000/jenkins-autocontido || {
