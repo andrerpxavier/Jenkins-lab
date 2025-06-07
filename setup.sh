@@ -43,7 +43,7 @@ configurar_docker_worker() {
   echo "🔧 A configurar Docker em $WORKER_IP..."
 
   ssh root@$WORKER_IP bash -s <<EOF
-  if ! command -v docker &> /dev/null; then
+  if ! systemctl status docker &>/dev/null; then
     echo "🧱 Docker não encontrado. A instalar via dnf..."
     dnf install -y dnf-plugins-core epel-release
     dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
