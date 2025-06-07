@@ -94,6 +94,18 @@ systemctl daemon-reexec
 systemctl restart kubelet
 EOF
 
+  if [ ! -f jenkins-autocontido.tar ]; then
+    echo "📦 A guardar imagem Jenkins como tar..."
+    docker save -o jenkins-autocontido.tar jenkins-autocontido:latest
+  else
+    echo "✅ Imagem Jenkins já exportada localmente"
+  fi
+  
+  if [ ! -f jenkins-autocontido.tar ]; then
+    echo "❌ Erro: Falhou a criação de jenkins-autocontido.tar"
+    exit 1
+  fi
+
   echo "📤 A enviar imagem Jenkins para o worker..."
   scp jenkins-autocontido.tar root@"$WORKER_IP":/root/
 
