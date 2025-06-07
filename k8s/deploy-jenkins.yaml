@@ -14,10 +14,10 @@ spec:
         app: jenkins
     spec:
       serviceAccountName: jenkins-admin
-      containers:
-        - name: jenkins
-          image: 192.168.8.137:5000/jenkins-autocontido
-          imagePullPolicy: IfNotPresent
+          containers:
+          - name: jenkins
+            image: 192.168.8.137:5000/jenkins-autocontido:latest
+            imagePullPolicy: Never
           ports:
             - containerPort: 8080
             - containerPort: 50000
