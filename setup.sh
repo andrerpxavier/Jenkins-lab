@@ -19,6 +19,23 @@ instalar_docker() {
   echo "✅ Docker instalado com sucesso!"
 }
 
+preparar_cache_docker_rpms() {
+  echo "📦 A preparar cache local dos pacotes Docker..."
+
+  CACHE_DIR="./docker_rpm_cache"
+  mkdir -p "$CACHE_DIR"
+
+  # Instalar repositórios e preparar cache
+  dnf install -y dnf-plugins-core epel-release
+  dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+
+  # Download dos pacotes necessários e dependências
+  dnf download --resolve --alldeps --downloaddir="$CACHE_DIR" \
+    docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+  echo "✅ Cache local criada em $CACHE_DIR"
+}
+
 configurar_docker_worker() {
   WORKER_IP=$1
   REGISTRY_IP=$2
@@ -40,19 +57,27 @@ configurar_docker_worker() {
     echo "✅ Acesso SSH sem password já está funcional."
   fi
 
-  echo "🔧 A configurar Docker em $WORKER_IP..."
+  echo "🔧 A instalar Docker CE via cache local no worker $WORKER_IP..."
 
-  ssh root@$WORKER_IP bash -s <<EOF
-  if ! systemctl status docker &>/dev/null; then
-    echo "🧱 Docker não encontrado. A instalar via dnf..."
-    dnf install -y dnf-plugins-core epel-release
-    dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-    dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-    systemctl enable docker
-    systemctl start docker
-  else
-    echo "✅ Docker já está instalado."
-  fi
+  # Criação de diretório remoto
+  ssh root@$WORKER_IP "mkdir -p /tmp/docker_rpm_cache"
+
+  # Copiar os pacotes via SCP
+  scp ./docker_rpm_cache/*.rpm root@$WORKER_IP:/tmp/docker_rpm_cache/
+
+  # Instalação no worker
+  ssh root@$WORKER_IP bash -s <<'EOF'
+if ! systemctl status docker &>/dev/null; then
+  echo "📦 A instalar pacotes Docker via cache local..."
+  dnf localinstall -y /tmp/docker_rpm_cache/*.rpm || {
+    echo "❌ Falha ao instalar Docker via cache local."
+    exit 1
+  }
+  systemctl enable docker
+  systemctl start docker
+else
+  echo "✅ Docker já está instalado."
+fi
 
 echo "⚙️  A configurar /etc/docker/daemon.json com registry inseguro..."
 mkdir -p /etc/docker
@@ -71,6 +96,7 @@ echo "🔍 A testar ligação ao registry: http://$REGISTRY_IP:5000..."
 curl --max-time 5 http://$REGISTRY_IP:5000/v2/_catalog || echo '❌ Erro ao contactar o registry'
 EOF
 }
+
 
   
 # ---------------------------
@@ -92,7 +118,7 @@ instalar_java() {
 # Verificação e instalação base
 # ------------------------------
 if ! command -v docker &> /dev/null; then
-  instalar_docker
+    instalar_docker
 else
   echo "✅ Docker já está instalado."
 fi
@@ -111,6 +137,8 @@ else
 fi
 
 echo "🔎 A detetar workers no cluster Kubernetes..."
+
+preparar_cache_docker_rpms
 
 REGISTRY_IP=$(hostname -I | awk '{print $1}')
 WORKER_NODES=$(kubectl get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[*].metadata.name}')
