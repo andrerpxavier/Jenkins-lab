@@ -58,25 +58,25 @@ docker build -t jenkins-autocontido -f Dockerfile.jenkins .
 # ---------------------------
 # Jenkins container via Docker
 # ---------------------------
-echo "✅ [3/8] A iniciar Jenkins standalone..."
+#echo "✅ [3/8] A iniciar Jenkins standalone..."
 
 # Remove o Jenkins anterior se existir
-if docker ps -a --format '{{.Names}}' | grep -Eq '^jenkins$'; then
-  echo "⚠️  Jenkins já existia. A remover..."
-  docker rm -f jenkins
-fi
+#if docker ps -a --format '{{.Names}}' | grep -Eq '^jenkins$'; then
+#  echo "⚠️  Jenkins já existia. A remover..."
+#  docker rm -f jenkins
+#fi
 
-docker run -d \
-  --name jenkins \
-  -u 0 \
-  --restart=always \
-  -p 8080:8080 -p 50000:50000 \
-  -v jenkins_home:/var/jenkins_home \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  jenkins-autocontido || {
-    echo "❌ Falha ao iniciar o container do Jenkins."
-    exit 1
-}
+#docker run -d \
+#  --name jenkins \
+#  -u 0 \
+#  --restart=always \
+#  -p 8080:8080 -p 50000:50000 \
+#  -v jenkins_home:/var/jenkins_home \
+#  -v /var/run/docker.sock:/var/run/docker.sock \
+#  jenkins-autocontido || {
+#    echo "❌ Falha ao iniciar o container do Jenkins."
+#    exit 1
+#}
 
 # ---------------------------
 # Jenkins via Kubernetes YAMLs
@@ -111,18 +111,28 @@ instalar_java
 
 
 IP=$(hostname -I | awk '{print $1}')
-echo -e "\n✅ Jenkins a correr em: http://localhost:8080 ou http://$IP:8080"
-echo -e "📦 Jenkins Kubernetes exposto via NodePort em: http://$IP:32000 (caso ativado)\n"
+#echo -e "\n✅ Jenkins a correr em: http://localhost:8080 ou http://$IP:8080"
+#echo -e "📦 Jenkins Kubernetes exposto via NodePort em: http://$IP:32000 (caso ativado)\n"
+JENKINS_URL="http://$IP:32000"
 
-ADMIN_PWD_FILE="/var/lib/docker/volumes/jenkins_home/_data/secrets/initialAdminPassword"
+#ADMIN_PWD_FILE="/var/lib/docker/volumes/jenkins_home/_data/secrets/initialAdminPassword"
+#echo "⏳ A aguardar password inicial do Jenkins..."
 
-echo "⏳ A aguardar password inicial do Jenkins..."
+#until [ -f "$ADMIN_PWD_FILE" ]; do
+#  sleep 2
+#done
 
-until [ -f "$ADMIN_PWD_FILE" ]; do
+#ADMIN_PWD=$(cat "$ADMIN_PWD_FILE")
+echo "⏳ A aguardar que o Jenkins esteja em estado Running..."
+
+until kubectl get pod -n jenkins -l app=jenkins -o jsonpath="{.items[0].status.phase}" 2>/dev/null | grep -q "Running"; do
   sleep 2
 done
 
-ADMIN_PWD=$(cat "$ADMIN_PWD_FILE")
+ADMIN_POD=$(kubectl get pods -n jenkins -l app=jenkins -o jsonpath="{.items[0].metadata.name}")
+ADMIN_PWD=$(kubectl -n jenkins exec -it "$ADMIN_POD" -- cat /var/jenkins_home/secrets/initialAdminPassword | tr -d '\r')
+
+
 echo -e "✅ Password inicial do Jenkins: \\e[1;32m$ADMIN_PWD\\e[0m"
 
 # ---------------------------
@@ -132,13 +142,26 @@ echo "✅ [8/8] Criar job hello-nginx-pipeline..."
 
 echo "⏳ A aguardar que o Jenkins aceite conexões HTTP..."
 
-until curl -s http://localhost:8080/login > /dev/null; do
+#until curl -s http://localhost:8080/login > /dev/null; do
+#  sleep 2
+#done
+
+#wget -q http://localhost:8080/jnlpJars/jenkins-cli.jar -O jenkins-cli.jar
+
+until curl -s "$JENKINS_URL/login" > /dev/null; do
   sleep 2
 done
 
-wget -q http://localhost:8080/jnlpJars/jenkins-cli.jar -O jenkins-cli.jar
+wget -q "$JENKINS_URL/jnlpJars/jenkins-cli.jar" -O jenkins-cli.jar
 
-java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:$ADMIN_PWD install-plugin git docker-workflow kubernetes-cli workflow-aggregator ws-cleanup -restart
+#java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:$ADMIN_PWD install-plugin git docker-workflow kubernetes-cli workflow-aggregator ws-cleanup -restart
+java -jar jenkins-cli.jar -s $JENKINS_URL -auth admin:$ADMIN_PWD install-plugin git docker-workflow kubernetes-cli workflow-aggregator ws-cleanup -restart
+
+echo "⏳ A aguardar que o Jenkins esteja pronto a aceitar ligações..."
+
+until curl -s "$JENKINS_URL/login" | grep -q "<title>Sign in"; do
+  sleep 3
+done
 
 echo "⏳ A aguardar reinício do Jenkins após plugins..."
 sleep 40
@@ -164,8 +187,11 @@ cat <<EOF > hello-nginx.xml
 </flow-definition>
 EOF
 
-java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:$ADMIN_PWD create-job hello-nginx-pipeline < hello-nginx.xml
-java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:$ADMIN_PWD build hello-nginx-pipeline
+#java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:$ADMIN_PWD create-job hello-nginx-pipeline < hello-nginx.xml
+#java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:$ADMIN_PWD build hello-nginx-pipeline
+java -jar jenkins-cli.jar -s $JENKINS_URL -auth admin:$ADMIN_PWD create-job hello-nginx-pipeline < hello-nginx.xml
+java -jar jenkins-cli.jar -s $JENKINS_URL -auth admin:$ADMIN_PWD build hello-nginx-pipeline
+
 
 echo "🎉 Jenkins configurado com sucesso e pipeline executado!"
 
