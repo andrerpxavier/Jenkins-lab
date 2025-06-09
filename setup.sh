@@ -146,14 +146,7 @@ preparar_cache_docker_rpms
 REGISTRY_IP=$(hostname -I | awk '{print $1}')
 WORKER_NODES=$(kubectl get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[*].metadata.name}')
 
-for NODE in $WORKER_NODES; do
-  IP=$(kubectl get node $NODE -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
-  configurar_worker  "$IP" "$REGISTRY_IP"
-done
-
-# ---------------------------
-# Jenkins Registry + Imagem
-# ---------------------------
+# Construir a imagem e exportar tarball ANTES de configurar os workers
 echo "📥 A garantir que a imagem registry:2 está disponível localmente..."
 docker pull registry:2
 
@@ -171,12 +164,17 @@ docker tag jenkins-autocontido localhost:5000/jenkins-autocontido
 echo "📦 A exportar imagem Jenkins como tarball..."
 docker save -o jenkins-autocontido.tar jenkins-autocontido:latest
 
-# Verificação de sucesso
+#verificação de sucesso
 if [ ! -f jenkins-autocontido.tar ]; then
   echo "❌ Erro: A exportação da imagem falhou!"
   exit 1
 fi
 
+# Agora sim, configurar os workers com tudo já pronto
+for NODE in $WORKER_NODES; do
+  IP=$(kubectl get node $NODE -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
+  configurar_worker  "$IP" "$REGISTRY_IP"
+done
 echo "✅ [3/8] A fazer push da imagem jenkins-autocontido para o registry local..."
 docker push localhost:5000/jenkins-autocontido || {
   echo "❌ Falha ao fazer push da imagem Jenkins para o registry local."
