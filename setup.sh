@@ -95,11 +95,11 @@ systemctl daemon-reexec
 systemctl restart kubelet
 EOF
 
-  echo "📤 A enviar imagem Jenkins para o worker..."
-  scp jenkins-autocontido.tar root@"$WORKER_IP":/root/
+#  echo "📤 A enviar imagem Jenkins para o worker..."
+#  scp jenkins-autocontido.tar root@"$WORKER_IP":/root/
 
-  echo "📦 A carregar imagem Jenkins localmente no worker..."
-  ssh root@"$WORKER_IP" "docker load -i /root/jenkins-autocontido.tar && rm /root/jenkins-autocontido.tar"
+#  echo "📦 A carregar imagem Jenkins localmente no worker..."
+#  ssh root@"$WORKER_IP" "docker load -i /root/jenkins-autocontido.tar && rm /root/jenkins-autocontido.tar"
 }
   
 # ---------------------------
