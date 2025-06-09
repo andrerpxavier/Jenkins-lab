@@ -154,10 +154,9 @@ docker run -d --name registry --restart=always -p 5000:5000 registry:2
 echo "✅ [2/8] Construindo imagem Jenkins personalizada..."
 docker build -t jenkins-autocontido -f Dockerfile.jenkins .
 docker tag jenkins-autocontido ${REGISTRY_IP}:5000/jenkins-autocontido
-docker tag jenkins-autocontido localhost:5000/jenkins-autocontido
 
 echo "📦 A exportar imagem Jenkins como tarball..."
-docker save -o jenkins-autocontido.tar jenkins-autocontido:latest
+docker save -o jenkins-autocontido.tar ${REGISTRY_IP}:5000/jenkins-autocontido:latest
 
 #verificação de sucesso
 if [ ! -f jenkins-autocontido.tar ]; then
