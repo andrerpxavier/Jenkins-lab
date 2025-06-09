@@ -166,42 +166,51 @@ docker run -d --name registry --restart=always -p 5000:5000 registry:2
 echo "✅ [2/8] Construindo imagem Jenkins personalizada..."
 docker build -t jenkins-autocontido -f Dockerfile.jenkins .
 docker tag jenkins-autocontido ${REGISTRY_IP}:5000/jenkins-autocontido
+docker tag jenkins-autocontido localhost:5000/jenkins-autocontido
 
 echo "📦 A exportar imagem Jenkins como tarball..."
-docker save ${REGISTRY_IP}:5000/jenkins-autocontido:latest -o jenkins-autocontido.tar
+docker save -o jenkins-autocontido.tar jenkins-autocontido:latest
+
+# Verificação de sucesso
+if [ ! -f jenkins-autocontido.tar ]; then
+  echo "❌ Erro: A exportação da imagem falhou!"
+  exit 1
+fi
 
 echo "✅ [3/8] A fazer push da imagem jenkins-autocontido para o registry local..."
-docker tag jenkins-autocontido localhost:5000/jenkins-autocontido
+docker push localhost:5000/jenkins-autocontido || {
+  echo "❌ Falha ao fazer push da imagem Jenkins para o registry local."
+  exit 1
+}
 
 echo "✅ A configurar Docker para aceitar o registry local (localhost:5000)..."
 
-# Criar ou atualizar /etc/docker/daemon.json
 cat <<EOF > /etc/docker/daemon.json
 {
   "insecure-registries": ["localhost:5000"]
 }
 EOF
 
-# Reiniciar o Docker
 systemctl restart docker
-
-# Aguardar que o Docker volte a responder
 sleep 5
 
 echo "✅ Docker configurado com suporte para registry local."
-
-
-docker push localhost:5000/jenkins-autocontido || {
-  echo "❌ Falha ao fazer push da imagem Jenkins para o registry local."
-  exit 1
-}
-
 
 echo "🔍 Validar que a imagem está no registry local..."
 curl -s http://localhost:5000/v2/_catalog | grep "jenkins-autocontido" || {
   echo "❌ A imagem não foi corretamente enviada para o registry local!"
   exit 1
 }
+
+# Enviar imagem para os workers e carregá-la
+for NODE in $WORKER_NODES; do
+  IP=$(kubectl get node "$NODE" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
+  echo "📤 A enviar imagem Jenkins para o worker $NODE ($IP)..."
+  scp -o StrictHostKeyChecking=no jenkins-autocontido.tar root@"$IP":/tmp/
+
+  echo "🐳 A carregar imagem no worker $NODE..."
+  ssh -o StrictHostKeyChecking=no root@"$IP" "docker load -i /tmp/jenkins-autocontido.tar"
+done
 
 # ---------------------------
 # Jenkins container via Docker
