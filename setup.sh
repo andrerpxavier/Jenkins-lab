@@ -95,11 +95,6 @@ systemctl daemon-reexec
 systemctl restart kubelet
 EOF
 
-#  echo "📤 A enviar imagem Jenkins para o worker..."
-#  scp jenkins-autocontido.tar root@"$WORKER_IP":/root/
-
-#  echo "📦 A carregar imagem Jenkins localmente no worker..."
-#  ssh root@"$WORKER_IP" "docker load -i /root/jenkins-autocontido.tar && rm /root/jenkins-autocontido.tar"
 }
   
 # ---------------------------
@@ -200,14 +195,22 @@ curl -s http://localhost:5000/v2/_catalog | grep "jenkins-autocontido" || {
   exit 1
 }
 
-# Enviar imagem para os workers e carregá-la
+# Enviar imagem para os workers e carregá-la com o runtime correto
 for NODE in $WORKER_NODES; do
   IP=$(kubectl get node "$NODE" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
   echo "📤 A enviar imagem Jenkins para o worker $NODE ($IP)..."
   scp -o StrictHostKeyChecking=no jenkins-autocontido.tar root@"$IP":/tmp/
 
-  echo "🐳 A carregar imagem no worker $NODE..."
-  ssh -o StrictHostKeyChecking=no root@"$IP" "docker load -i /tmp/jenkins-autocontido.tar"
+  echo "🔍 A detetar o runtime do worker $NODE..."
+  CONTAINERD_ATIVO=$(ssh -o StrictHostKeyChecking=no root@"$IP" "ps aux | grep kubelet | grep -q containerd && echo sim || echo nao")
+
+  if [ "$CONTAINERD_ATIVO" = "sim" ]; then
+    echo "📦 A carregar imagem com containerd (ctr)..."
+    ssh -o StrictHostKeyChecking=no root@"$IP" "ctr -n k8s.io images import /tmp/jenkins-autocontido.tar && rm /tmp/jenkins-autocontido.tar"
+  else
+    echo "🐳 A carregar imagem com Docker..."
+    ssh -o StrictHostKeyChecking=no root@"$IP" "docker load -i /tmp/jenkins-autocontido.tar && rm /tmp/jenkins-autocontido.tar"
+  fi
 done
 
 # ---------------------------
