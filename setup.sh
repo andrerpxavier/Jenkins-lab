@@ -152,11 +152,12 @@ fi
 docker run -d --name registry --restart=always -p 5000:5000 registry:2
 
 echo "✅ [2/8] Construindo imagem Jenkins personalizada..."
+REGISTRY="localhost:5000"
 docker build -t jenkins-autocontido -f Dockerfile.jenkins .
-docker tag jenkins-autocontido ${REGISTRY_IP}:5000/jenkins-autocontido
+docker tag jenkins-autocontido:latest ${REGISTRY}/jenkins-autocontido:latest
 
 echo "📦 A exportar imagem Jenkins como tarball..."
-docker save -o jenkins-autocontido.tar ${REGISTRY_IP}:5000/jenkins-autocontido:latest
+docker save -o jenkins-autocontido.tar ${REGISTRY}/jenkins-autocontido:latest
 
 #verificação de sucesso
 if [ ! -f jenkins-autocontido.tar ]; then
@@ -170,7 +171,7 @@ for NODE in $WORKER_NODES; do
   configurar_worker  "$IP" "$REGISTRY_IP"
 done
 echo "✅ [3/8] A fazer push da imagem jenkins-autocontido para o registry local..."
-docker push localhost:5000/jenkins-autocontido || {
+docker push ${REGISTRY}/jenkins-autocontido:latest || {
   echo "❌ Falha ao fazer push da imagem Jenkins para o registry local."
   exit 1
 }
