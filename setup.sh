@@ -347,6 +347,7 @@ IP=$(hostname -I | awk '{print $1}')
 #echo -e "\n✅ Jenkins a correr em: http://localhost:8080 ou http://$IP:8080"
 #echo -e "📦 Jenkins Kubernetes exposto via NodePort em: http://$IP:32000 (caso ativado)\n"
 JENKINS_URL="http://$IP:32000"
+NGINX_URL="http://$IP:8083"
 
 echo "⏳ A aguardar que o pod do Jenkins fique em estado Running ..."
 TIMEOUT=180
@@ -423,3 +424,5 @@ java -jar jenkins-cli.jar -s $JENKINS_URL -auth admin:$ADMIN_PWD build hello-ngi
 
 
 echo "🎉 Jenkins configurado com sucesso e pipeline executado!"
+echo "🔗 Jenkins: $JENKINS_URL"
+echo "🔗 Nginx: $NGINX_URL"

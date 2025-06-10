@@ -264,5 +264,6 @@ A pipeline irá:
 - Aplicar os manifests no cluster Kubernetes
 - Servir a aplicação na porta 8083
 - Servir o Jenkins na porta 32000 via Kubernetes
+- Ao finalizar, o *setup.sh* exibe os links de acesso ao Jenkins e à aplicação Nginx
 
 ✅ Sistema CI/CD totalmente funcional, automatizado com setup.sh
