@@ -22,6 +22,19 @@ pipeline {
       }
     }
 
+    stage('Iniciar Registry Local') {
+      steps {
+        sh '''
+          if ! docker ps --format '{{.Names}}' | grep -q '^registry$'; then
+            if docker ps -a --format '{{.Names}}' | grep -q '^registry$'; then
+              docker rm -f registry
+            fi
+            docker run -d --name registry --restart=always -p 5000:5000 registry:2
+          fi
+        '''
+      }
+    }
+
     stage('Build da imagem Docker') {
       steps {
         sh """
