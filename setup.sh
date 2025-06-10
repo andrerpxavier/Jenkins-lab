@@ -420,8 +420,14 @@ cat <<EOF > hello-nginx.xml
 </flow-definition>
 EOF
 
-java -jar jenkins-cli.jar -s $JENKINS_URL -auth admin:$ADMIN_PWD create-job hello-nginx-pipeline < hello-nginx.xml
-java -jar jenkins-cli.jar -s $JENKINS_URL -auth admin:$ADMIN_PWD build hello-nginx-pipeline
+if java -jar jenkins-cli.jar -s "$JENKINS_URL" -auth admin:"$ADMIN_PWD" get-job hello-nginx-pipeline >/dev/null 2>&1; then
+  echo "⚠️  Job hello-nginx-pipeline já existe. Atualizando..."
+  java -jar jenkins-cli.jar -s "$JENKINS_URL" -auth admin:"$ADMIN_PWD" update-job hello-nginx-pipeline < hello-nginx.xml
+else
+  echo "✅ A criar job hello-nginx-pipeline..."
+  java -jar jenkins-cli.jar -s "$JENKINS_URL" -auth admin:"$ADMIN_PWD" create-job hello-nginx-pipeline < hello-nginx.xml
+fi
+java -jar jenkins-cli.jar -s "$JENKINS_URL" -auth admin:"$ADMIN_PWD" build hello-nginx-pipeline
 
 # Redirecionar a porta externa 8083 para o NodePort 32080, se ainda nao existir
 if ! iptables -t nat -C PREROUTING -p tcp --dport 8083 -j REDIRECT --to-ports 32080 2>/dev/null; then
