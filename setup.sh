@@ -281,6 +281,7 @@ echo "✅ [7/8] Aplicar deployment e service Kubernetes..."
 
 REGISTRY_IP=$(hostname -I | awk '{print $1}')
 sed -i "s|image: jenkins-autocontido:latest|image: ${REGISTRY_IP}:5000/jenkins-autocontido:latest|" k8s/deploy-jenkins.yaml
+sed -i "s|value: \"localhost:5000\"|value: \"${REGISTRY_IP}:5000\"|" k8s/deploy-jenkins.yaml
 
 echo "🔍 A verificar se todos os workers têm a imagem jenkins-autocontido localmente..."
 

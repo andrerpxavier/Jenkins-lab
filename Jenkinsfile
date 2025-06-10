@@ -4,7 +4,7 @@ pipeline {
   environment {
     IMAGE_NAME = "hello-nginx"
     IMAGE_TAG = "latest"
-    REGISTRY = "localhost:5000"
+    REGISTRY = env.REGISTRY_ADDR ?: "localhost:5000"
     K8S_DEPLOYMENT_PATH = "k8s/deployment.yaml"
     K8S_SERVICE_PATH = "k8s/service.yaml"
   }
@@ -81,8 +81,8 @@ pipeline {
           token: \$TOKEN
       EOF
       
-        kubectl --kubeconfig=\$KUBECONFIG apply -f ${K8S_DEPLOYMENT_PATH}
-        kubectl --kubeconfig=\$KUBECONFIG apply -f ${K8S_SERVICE_PATH}
+          sed "s|localhost:5000|${REGISTRY}|g" ${K8S_DEPLOYMENT_PATH} | kubectl --kubeconfig=\$KUBECONFIG apply -f -
+          sed "s|localhost:5000|${REGISTRY}|g" ${K8S_SERVICE_PATH} | kubectl --kubeconfig=\$KUBECONFIG apply -f -
       """
       }
     }
