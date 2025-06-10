@@ -58,7 +58,7 @@ pipeline {
   environment {
     IMAGE_NAME = "hello-nginx"
     IMAGE_TAG = "latest"
-    REGISTRY = env.REGISTRY_ADDR ?: "localhost:5000"
+    REGISTRY = "${env.REGISTRY_ADDR ?: 'localhost:5000'}"
     K8S_DEPLOYMENT_PATH = "k8s/deployment.yaml"
     K8S_SERVICE_PATH = "k8s/service.yaml"
   }
