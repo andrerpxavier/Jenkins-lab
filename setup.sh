@@ -74,8 +74,8 @@ configurar_worker() {
     return 1
   }
 
-  echo "🐳 A configurar Docker remotamente..."
-  ssh root@"$WORKER_IP" bash -s <<EOF
+echo "🐳 A configurar Docker remotamente..."
+ssh root@"$WORKER_IP" bash -s <<EOF
 if ! command -v docker &>/dev/null; then
   echo "🧱 Docker não encontrado. A instalar via cache local..."
   dnf install -y /root/docker_rpm_cache/*.rpm
@@ -85,7 +85,11 @@ fi
 
 echo "⚙️  A configurar /etc/docker/daemon.json com registry inseguro..."
 mkdir -p /etc/docker
-echo "{ \"insecure-registries\": [\"$REGISTRY_IP:5000\"] }" > /etc/docker/daemon.json
+cat <<EOC > /etc/docker/daemon.json
+{
+  "insecure-registries": ["${REGISTRY_IP}:5000"]
+}
+EOC
 
 echo "🔄 A reiniciar Docker..."
 systemctl restart docker || echo "⚠️  Falha ao reiniciar Docker."
@@ -94,6 +98,7 @@ echo "♻️  A reiniciar kubelet..."
 systemctl daemon-reexec
 systemctl restart kubelet
 EOF
+
 
 }
   
