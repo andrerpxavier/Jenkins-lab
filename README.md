@@ -262,8 +262,9 @@ A pipeline irá:
 - Buildar a imagem hello-nginx
 - Fazer push para o registry local
 - Aplicar os manifests no cluster Kubernetes
-- Servir a aplicação na porta 8083
+- Servir a aplicação via NodePort 32080 (encaminhada para a porta 8083)
 - Servir o Jenkins na porta 32000 via Kubernetes
 - Ao finalizar, o *setup.sh* exibe os links de acesso ao Jenkins e à aplicação Nginx
+  e cria um redirecionamento local da porta 8083 para o NodePort 32080
 
 ✅ Sistema CI/CD totalmente funcional, automatizado com setup.sh
