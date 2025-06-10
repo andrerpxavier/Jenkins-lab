@@ -4,7 +4,8 @@ pipeline {
   environment {
     IMAGE_NAME = "hello-nginx"
     IMAGE_TAG = "latest"
-    REGISTRY = "${env.REGISTRY_ADDR ?: 'localhost:5000'}"
+    REGISTRY_ADDR = "${env.REGISTRY_ADDR ?: ''}"
+    REGISTRY = ''
     K8S_DEPLOYMENT_PATH = "k8s/deployment.yaml"
     K8S_SERVICE_PATH = "k8s/service.yaml"
   }
@@ -19,6 +20,18 @@ pipeline {
     stage('Clone Repositório') {
       steps {
         git branch: 'main', url: 'https://github.com/andrerpxavier/Jenkins-lab.git'
+      }
+    }
+
+    stage('Definir Variáveis') {
+      steps {
+        script {
+          if (!env.REGISTRY_ADDR?.trim()) {
+            env.REGISTRY_ADDR = sh(returnStdout: true, script: "hostname -I | awk '{print \$1}'").trim() + ':5000'
+          }
+          env.REGISTRY = env.REGISTRY_ADDR
+          echo "Registry definido como ${env.REGISTRY}"
+        }
       }
     }
 
