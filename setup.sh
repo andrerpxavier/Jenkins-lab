@@ -422,6 +422,14 @@ EOF
 java -jar jenkins-cli.jar -s $JENKINS_URL -auth admin:$ADMIN_PWD create-job hello-nginx-pipeline < hello-nginx.xml
 java -jar jenkins-cli.jar -s $JENKINS_URL -auth admin:$ADMIN_PWD build hello-nginx-pipeline
 
+# Redirecionar a porta externa 8083 para o NodePort 32080, se ainda nao existir
+if ! iptables -t nat -C PREROUTING -p tcp --dport 8083 -j REDIRECT --to-ports 32080 2>/dev/null; then
+  iptables -t nat -A PREROUTING -p tcp --dport 8083 -j REDIRECT --to-ports 32080
+fi
+if ! iptables -t nat -C OUTPUT -p tcp --dport 8083 -j REDIRECT --to-ports 32080 2>/dev/null; then
+  iptables -t nat -A OUTPUT -p tcp --dport 8083 -j REDIRECT --to-ports 32080
+fi
+
 
 echo "🎉 Jenkins configurado com sucesso e pipeline executado!"
 echo "🔗 Jenkins: $JENKINS_URL"
