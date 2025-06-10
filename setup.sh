@@ -85,7 +85,7 @@ fi
 
 echo "⚙️  A configurar /etc/docker/daemon.json com registry inseguro..."
 mkdir -p /etc/docker
-echo '{ "insecure-registries": ["$REGISTRY_IP:5000"] }' > /etc/docker/daemon.json
+echo "{ \"insecure-registries\": [\"$REGISTRY_IP:5000\"] }" > /etc/docker/daemon.json
 
 echo "🔄 A reiniciar Docker..."
 systemctl restart docker || echo "⚠️  Falha ao reiniciar Docker."
@@ -152,7 +152,8 @@ fi
 docker run -d --name registry --restart=always -p 5000:5000 registry:2
 
 echo "✅ [2/8] Construindo imagem Jenkins personalizada..."
-REGISTRY="localhost:5000"
+REGISTRY_IP=$(hostname -I | awk '{print $1}')
+REGISTRY="${REGISTRY_IP}:5000"
 docker build -t jenkins-autocontido -f Dockerfile.jenkins .
 docker tag jenkins-autocontido:latest ${REGISTRY}/jenkins-autocontido:latest
 
