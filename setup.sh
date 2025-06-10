@@ -176,11 +176,6 @@ for NODE in $WORKER_NODES; do
   IP=$(kubectl get node $NODE -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
   configurar_worker  "$IP" "$REGISTRY_IP"
 done
-echo "✅ [3/8] A fazer push da imagem jenkins-autocontido para o registry local..."
-docker push ${REGISTRY}/jenkins-autocontido:latest || {
-  echo "❌ Falha ao fazer push da imagem Jenkins para o registry local."
-  exit 1
-}
 
 echo "✅ A configurar Docker para aceitar o registry local e remoto (localhost e IP)..."
 
@@ -196,13 +191,17 @@ sleep 5
 
 echo "✅ Docker configurado com suporte para registry local."
 
+echo "✅ [3/8] A fazer push da imagem jenkins-autocontido para o registry local..."
+docker push ${REGISTRY}/jenkins-autocontido:latest || {
+  echo "❌ Falha ao fazer push da imagem Jenkins para o registry local."
+  exit 1
+}
+
 echo "🔍 Validar que a imagem está no registry local..."
 if ! curl -s http://${REGISTRY_IP}:5000/v2/_catalog | grep -q "jenkins-autocontido"; then
   echo "❌ A imagem não foi corretamente enviada para o registry local!"
   exit 1
 fi
-
-}
 
 # Enviar imagem para os workers e carregá-la com o runtime correto
 for NODE in $WORKER_NODES; do
