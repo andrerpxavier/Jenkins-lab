@@ -290,14 +290,29 @@ for NODE in $WORKER_NODES; do
   IP=$(kubectl get node "$NODE" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
   echo "🔎 Verificar imagem no worker $NODE ($IP)..."
 
-  if ! ssh -o StrictHostKeyChecking=no root@"$IP" docker image inspect "${REGISTRY_IP}:5000/jenkins-autocontido:latest" > /dev/null 2>&1; then
-    echo "⚠️  Imagem não encontrada no worker $NODE. A tentar fazer pull manualmente..."
+  container_runtime=$(kubectl get node "$NODE" -o jsonpath='{.status.nodeInfo.containerRuntimeVersion}' | cut -d ':' -f1)
 
-    if ! ssh root@"$IP" docker pull "${REGISTRY_IP}:5000/jenkins-autocontido:latest"; then
-      echo "❌ Falha ao fazer pull da imagem no worker $NODE ($IP)"
+  if [ "$container_runtime" = "containerd" ]; then
+    CHECK_CMD="ssh -o StrictHostKeyChecking=no root@$IP ctr -n k8s.io images ls | grep jenkins-autocontido"
+  else
+    CHECK_CMD="ssh -o StrictHostKeyChecking=no root@$IP docker image inspect ${REGISTRY_IP}:5000/jenkins-autocontido:latest"
+  fi
+
+  if ! eval "$CHECK_CMD" > /dev/null 2>&1; then
+    echo "⚠️  Imagem não encontrada no worker $NODE. A importar manualmente..."
+    scp -o StrictHostKeyChecking=no jenkins-autocontido.tar root@"$IP":/tmp/
+
+    if [ "$container_runtime" = "containerd" ]; then
+      ssh -o StrictHostKeyChecking=no root@"$IP" "ctr -n k8s.io images import /tmp/jenkins-autocontido.tar && rm /tmp/jenkins-autocontido.tar"
+    else
+      ssh -o StrictHostKeyChecking=no root@"$IP" "docker load -i /tmp/jenkins-autocontido.tar && rm /tmp/jenkins-autocontido.tar"
+    fi
+
+    if ! eval "$CHECK_CMD" > /dev/null 2>&1; then
+      echo "❌ Falha ao importar imagem no worker $NODE ($IP)"
       FALHA_IMAGEM=1
     else
-      echo "✅ Pull bem-sucedido no worker $NODE"
+      echo "✅ Imagem importada com sucesso no worker $NODE"
     fi
   else
     echo "✅ Imagem já está presente no worker $NODE"
@@ -313,6 +328,14 @@ echo "✅ Todos os workers têm a imagem jenkins-autocontido. A avançar com o d
 
 kubectl apply -f k8s/deploy-jenkins.yaml
 kubectl apply -f k8s/service-jenkins.yaml
+
+echo "🔄 A reiniciar pod do Jenkins para usar a imagem atualizada..."
+kubectl delete pod -n jenkins --all
+echo "⏳ A aguardar que o pod do Jenkins fique em Running..."
+until kubectl get pod -n jenkins -l app=jenkins -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; do
+  kubectl get pods -n jenkins
+  sleep 3
+done
 
 sleep 40  # Dá tempo ao Jenkins para gerar o ficheiro
 
