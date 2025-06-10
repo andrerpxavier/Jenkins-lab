@@ -215,29 +215,6 @@ for NODE in $WORKER_NODES; do
 done
 
 # ---------------------------
-# Jenkins container via Docker
-# ---------------------------
-#echo "✅ [3/8] A iniciar Jenkins standalone..."
-
-# Remove o Jenkins anterior se existir
-#if docker ps -a --format '{{.Names}}' | grep -Eq '^jenkins$'; then
-#  echo "⚠️  Jenkins já existia. A remover..."
-#  docker rm -f jenkins
-#fi
-
-#docker run -d \
-#  --name jenkins \
-#  -u 0 \
-#  --restart=always \
-#  -p 8080:8080 -p 50000:50000 \
-#  -v jenkins_home:/var/jenkins_home \
-#  -v /var/run/docker.sock:/var/run/docker.sock \
-#  jenkins-autocontido || {
-#    echo "❌ Falha ao iniciar o container do Jenkins."
-#    exit 1
-#}
-
-# ---------------------------
 # Jenkins via Kubernetes YAMLs
 # ---------------------------
 echo "✅ [4/8] Criar namespace Jenkins no cluster..."
@@ -341,15 +318,6 @@ IP=$(hostname -I | awk '{print $1}')
 #echo -e "📦 Jenkins Kubernetes exposto via NodePort em: http://$IP:32000 (caso ativado)\n"
 JENKINS_URL="http://$IP:32000"
 
-#ADMIN_PWD_FILE="/var/lib/docker/volumes/jenkins_home/_data/secrets/initialAdminPassword"
-#echo "⏳ A aguardar password inicial do Jenkins..."
-
-#until [ -f "$ADMIN_PWD_FILE" ]; do
-#  sleep 2
-#done
-
-#ADMIN_PWD=$(cat "$ADMIN_PWD_FILE")
-
 echo "⏳ A aguardar que o pod do Jenkins fique em estado Running ..."
 TIMEOUT=180
 SECONDS_WAITED=0
@@ -382,19 +350,12 @@ echo "✅ [8/8] Criar job hello-nginx-pipeline..."
 
 echo "⏳ A aguardar que o Jenkins aceite conexões HTTP..."
 
-#until curl -s http://localhost:8080/login > /dev/null; do
-#  sleep 2
-#done
-
-#wget -q http://localhost:8080/jnlpJars/jenkins-cli.jar -O jenkins-cli.jar
-
 until curl -s "$JENKINS_URL/login" > /dev/null; do
   sleep 2
 done
 
 wget -q "$JENKINS_URL/jnlpJars/jenkins-cli.jar" -O jenkins-cli.jar
 
-#java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:$ADMIN_PWD install-plugin git docker-workflow kubernetes-cli workflow-aggregator ws-cleanup -restart
 java -jar jenkins-cli.jar -s $JENKINS_URL -auth admin:$ADMIN_PWD install-plugin git docker-workflow kubernetes-cli workflow-aggregator ws-cleanup -restart
 
 echo "⏳ A aguardar que o Jenkins esteja pronto a aceitar ligações..."
@@ -427,8 +388,6 @@ cat <<EOF > hello-nginx.xml
 </flow-definition>
 EOF
 
-#java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:$ADMIN_PWD create-job hello-nginx-pipeline < hello-nginx.xml
-#java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:$ADMIN_PWD build hello-nginx-pipeline
 java -jar jenkins-cli.jar -s $JENKINS_URL -auth admin:$ADMIN_PWD create-job hello-nginx-pipeline < hello-nginx.xml
 java -jar jenkins-cli.jar -s $JENKINS_URL -auth admin:$ADMIN_PWD build hello-nginx-pipeline
 
