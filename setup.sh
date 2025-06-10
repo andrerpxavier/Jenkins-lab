@@ -182,23 +182,26 @@ docker push ${REGISTRY}/jenkins-autocontido:latest || {
   exit 1
 }
 
-echo "✅ A configurar Docker para aceitar o registry local (localhost:5000)..."
+echo "✅ A configurar Docker para aceitar o registry local e remoto (localhost e IP)..."
 
 cat <<EOF > /etc/docker/daemon.json
 {
-  "insecure-registries": ["localhost:5000"]
+  "insecure-registries": ["localhost:5000", "${REGISTRY_IP}:5000"]
 }
 EOF
 
+systemctl daemon-reexec
 systemctl restart docker
 sleep 5
 
 echo "✅ Docker configurado com suporte para registry local."
 
 echo "🔍 Validar que a imagem está no registry local..."
-curl -s http://localhost:5000/v2/_catalog | grep "jenkins-autocontido" || {
+if ! curl -s http://${REGISTRY_IP}:5000/v2/_catalog | grep -q "jenkins-autocontido"; then
   echo "❌ A imagem não foi corretamente enviada para o registry local!"
   exit 1
+fi
+
 }
 
 # Enviar imagem para os workers e carregá-la com o runtime correto
