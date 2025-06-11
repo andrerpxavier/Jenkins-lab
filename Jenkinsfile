@@ -35,6 +35,19 @@ pipeline {
       }
     }
 
+    stage('Verificar Docker') {
+      steps {
+        sh '''
+          if ! docker info > /dev/null 2>&1; then
+            echo "Docker daemon não acessível, iniciando dockerd em background..."
+            dockerd > /tmp/dockerd.log 2>&1 &
+            sleep 20
+            docker info
+          fi
+        '''
+      }
+    }
+
     stage('Iniciar Registry Local') {
       steps {
         sh '''
