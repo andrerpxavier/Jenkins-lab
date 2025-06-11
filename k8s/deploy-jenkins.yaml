@@ -18,6 +18,8 @@ spec:
         - name: jenkins
           image: jenkins-autocontido:latest
           imagePullPolicy: Never
+          securityContext:
+            privileged: true
           env:
             - name: REGISTRY_ADDR
               value: "localhost:5000"
