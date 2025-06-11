@@ -6,6 +6,24 @@ set -e
 # ---------------------------
 instalar_docker() {
   echo "🔍 Docker não encontrado. A iniciar instalação..."
+
+  # Corrigir possíveis repos quebrados do CentOS
+  BASEOS_REPO="/etc/yum.repos.d/CentOS-Stream-BaseOS.repo"
+  APPSTREAM_REPO="/etc/yum.repos.d/CentOS-Stream-AppStream.repo"
+
+  if [ -f "$BASEOS_REPO" ]; then
+    sed -i '/^baseurl=/d' "$BASEOS_REPO"
+    sed -i 's|^mirrorlist=.*|mirrorlist=https://mirrors.centos.org/mirrorlist?arch=$basearch&repo=centos-stream-baseos&infra=$infra|' "$BASEOS_REPO"
+  fi
+
+  if [ -f "$APPSTREAM_REPO" ]; then
+    sed -i '/^baseurl=/d' "$APPSTREAM_REPO"
+    sed -i 's|^mirrorlist=.*|mirrorlist=https://mirrors.centos.org/mirrorlist?arch=$basearch&repo=centos-stream-appstream&infra=$infra|' "$APPSTREAM_REPO"
+  fi
+
+  dnf clean all
+  dnf makecache -y
+
   dnf install -y dnf-plugins-core epel-release
   dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
   dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
