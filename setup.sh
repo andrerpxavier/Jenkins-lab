@@ -285,20 +285,17 @@ fi
 mkdir -p /mnt/jenkins && chmod 755 /mnt/jenkins && chown -R 1000:1000 /mnt/jenkins
 kubectl apply -f k8s/volume-jenkins.yaml
 
+echo "✅ [7/8] Aplicar deployment e service Kubernetes..."
+
+echo "✅ Avançar com o deployment do Jenkins..."
+kubectl apply -f k8s/deploy-jenkins.yaml
+kubectl apply -f k8s/service-jenkins.yaml
+
 echo "⏳ A Aguardar que o PVC fique ligado ao PV..."
 until kubectl get pvc -n jenkins jenkins-pvc -o jsonpath='{.status.phase}' | grep -q "Bound"; do
   sleep 2
 done
 echo "✅ PVC ligado ao PV com sucesso."
-
-
-echo "✅ [7/8] Aplicar deployment e service Kubernetes..."
-
-
-echo "✅ Avançar com o deployment do Jenkins..."
-
-kubectl apply -f k8s/deploy-jenkins.yaml
-kubectl apply -f k8s/service-jenkins.yaml
 
 echo "🔄 A reiniciar pod do Jenkins para usar a imagem atualizada..."
 kubectl delete pod -n jenkins --all
