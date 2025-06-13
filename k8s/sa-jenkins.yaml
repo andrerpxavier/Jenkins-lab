@@ -1,18 +1,33 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: jenkins-cr
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "pods/exec", "services", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: jenkins-admin
+  name: jenkins-sa
   namespace: jenkins
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: jenkins-admin-binding
+  name: jenkins-crb
 subjects:
   - kind: ServiceAccount
-    name: jenkins-admin
+    name: jenkins-sa
     namespace: jenkins
 roleRef:
   kind: ClusterRole
-  name: cluster-admin
+  name: jenkins-cr
   apiGroup: rbac.authorization.k8s.io
