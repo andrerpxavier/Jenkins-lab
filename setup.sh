@@ -80,15 +80,17 @@ configurar_worker() {
   RAM_MB=$(ssh root@"$WORKER_IP" "free -m | awk '/^Mem:/ { print \$2 }'")
   if [ "$RAM_MB" -lt 4096 ]; then
     echo "➕ A criar swapfile de 4GB no worker $WORKER_IP..."
+
+
     ssh root@"$WORKER_IP" bash -s <<'EOF'
-  if ! grep -q '/swapfile' /proc/swaps; then
-    fallocate -l 4G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=4096
-    chmod 600 /swapfile
-    mkswap /swapfile
-    swapon /swapfile
-    grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
-  fi
-  EOF
+if ! grep -q '/swapfile' /proc/swaps; then
+  fallocate -l 4G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=4096
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+EOF
   else
     echo "✅ O worker tem RAM suficiente. Swap não necessária."
   fi
@@ -98,7 +100,7 @@ configurar_worker() {
     echo "❌ Falha ao copiar pacotes RPM para $WORKER_IP"
     return 1
   }
-
+  
 echo "🐳 A configurar Docker remotamente..."
 ssh root@"$WORKER_IP" bash -s <<EOF
 if ! command -v docker &>/dev/null; then
