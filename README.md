@@ -123,59 +123,103 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: jenkins
+      app: jenkins-server
   template:
     metadata:
       labels:
-        app: jenkins
+        app: jenkins-server
     spec:
-      serviceAccountName: jenkins-admin
+      serviceAccountName: jenkins-sa
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
       containers:
         - name: jenkins
-          image: jenkins-autocontido
+          image: jenkins/jenkins:lts
+          resources:
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+            requests:
+              memory: "500Mi"
+              cpu: "500m"
           ports:
-            - containerPort: 8080
-            - containerPort: 50000
+            - name: httpport
+              containerPort: 8080
+            - name: jnlpport
+              containerPort: 50000
+          livenessProbe:
+            httpGet:
+              path: "/login"
+              port: 8080
+            initialDelaySeconds: 90
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: "/login"
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           volumeMounts:
-            - name: jenkins-storage
+            - name: jenkins-data
               mountPath: /var/jenkins_home
-            - name: docker-socket
-              mountPath: /var/run/docker.sock
       volumes:
-        - name: jenkins-storage
+        - name: jenkins-data
           persistentVolumeClaim:
             claimName: jenkins-pvc
-        - name: docker-socket
-          hostPath:
-            path: /var/run/docker.sock
 
 ```
 
 ### sa-jenkins.yaml
 ```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: jenkins-cr
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "pods/exec", "services", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: jenkins-admin
+  name: jenkins-sa
   namespace: jenkins
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: jenkins-admin-binding
-roleRef:
-  kind: ClusterRole
-  name: cluster-admin
-  apiGroup: rbac.authorization.k8s.io
+  name: jenkins-crb
 subjects:
   - kind: ServiceAccount
-    name: jenkins-admin
+    name: jenkins-sa
     namespace: jenkins
-
+roleRef:
+  kind: ClusterRole
+  name: jenkins-cr
+  apiGroup: rbac.authorization.k8s.io
 ```
 
 ### volume-jenkins.yaml
 ```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-storage
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+---
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -183,13 +227,23 @@ metadata:
   labels:
     type: local
 spec:
-  storageClassName: manual
+  storageClassName: local-storage
   capacity:
-    storage: 5Gi
+    storage: 10Gi
   accessModes:
     - ReadWriteOnce
-  hostPath:
-    path: "/mnt/jenkins"
+  persistentVolumeReclaimPolicy: Retain
+  volumeMode: Filesystem
+  local:
+    path: /mnt/jenkins
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - worker1
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -197,12 +251,12 @@ metadata:
   name: jenkins-pvc
   namespace: jenkins
 spec:
-  storageClassName: manual
+  storageClassName: local-storage
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 5Gi
+      storage: 3Gi
 ```
 
 ### service-jenkins.yaml
@@ -215,7 +269,7 @@ metadata:
 spec:
   type: NodePort
   selector:
-    app: jenkins
+    app: jenkins-server
   ports:
     - port: 8080
       targetPort: 8080

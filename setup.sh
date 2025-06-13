@@ -265,9 +265,6 @@ for file in k8s/*.yaml; do
   }
 done
 
-kubectl apply -f k8s/rbac-jenkins-admin.yaml
-
-
 echo "✅ [5/8] Aplicar permissões RBAC (ServiceAccount + ClusterRole)..."
 kubectl apply -f k8s/sa-jenkins.yaml
 
@@ -297,53 +294,8 @@ echo "✅ PVC ligado ao PV com sucesso."
 
 echo "✅ [7/8] Aplicar deployment e service Kubernetes..."
 
-REGISTRY_IP=$(hostname -I | awk '{print $1}')
-sed -i "s|image: jenkins-autocontido:latest|image: ${REGISTRY_IP}:5000/jenkins-autocontido:latest|" k8s/deploy-jenkins.yaml
-sed -i "s|value: \"localhost:5000\"|value: \"${REGISTRY_IP}:5000\"|" k8s/deploy-jenkins.yaml
 
-echo "🔍 A verificar se todos os workers têm a imagem jenkins-autocontido localmente..."
-
-FALHA_IMAGEM=0
-
-for NODE in $WORKER_NODES; do
-  IP=$(kubectl get node "$NODE" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
-  echo "🔎 Verificar imagem no worker $NODE ($IP)..."
-
-  container_runtime=$(kubectl get node "$NODE" -o jsonpath='{.status.nodeInfo.containerRuntimeVersion}' | cut -d ':' -f1)
-
-  if [ "$container_runtime" = "containerd" ]; then
-    CHECK_CMD="ssh -o StrictHostKeyChecking=no root@$IP ctr -n k8s.io images ls | grep jenkins-autocontido"
-  else
-    CHECK_CMD="ssh -o StrictHostKeyChecking=no root@$IP docker image inspect ${REGISTRY_IP}:5000/jenkins-autocontido:latest"
-  fi
-
-  if ! eval "$CHECK_CMD" > /dev/null 2>&1; then
-    echo "⚠️  Imagem não encontrada no worker $NODE. A importar manualmente..."
-    scp -o StrictHostKeyChecking=no jenkins-autocontido.tar root@"$IP":/tmp/
-
-    if [ "$container_runtime" = "containerd" ]; then
-      ssh -o StrictHostKeyChecking=no root@"$IP" "ctr -n k8s.io images import /tmp/jenkins-autocontido.tar && rm /tmp/jenkins-autocontido.tar"
-    else
-      ssh -o StrictHostKeyChecking=no root@"$IP" "docker load -i /tmp/jenkins-autocontido.tar && rm /tmp/jenkins-autocontido.tar"
-    fi
-
-    if ! eval "$CHECK_CMD" > /dev/null 2>&1; then
-      echo "❌ Falha ao importar imagem no worker $NODE ($IP)"
-      FALHA_IMAGEM=1
-    else
-      echo "✅ Imagem importada com sucesso no worker $NODE"
-    fi
-  else
-    echo "✅ Imagem já está presente no worker $NODE"
-  fi
-done
-
-if [ "$FALHA_IMAGEM" -eq 1 ]; then
-  echo "🛑 Erro: Pelo menos um dos workers não conseguiu obter a imagem jenkins-autocontido. Abortar deploy."
-  exit 1
-fi
-
-echo "✅ Todos os workers têm a imagem jenkins-autocontido. A avançar com o deployment..."
+echo "✅ Avançar com o deployment do Jenkins..."
 
 kubectl apply -f k8s/deploy-jenkins.yaml
 kubectl apply -f k8s/service-jenkins.yaml
