@@ -56,44 +56,99 @@ pipeline {
   agent any
 
   environment {
-    IMAGE_NAME = "hello-nginx"
-    IMAGE_TAG = "latest"
-    REGISTRY = "${env.REGISTRY_ADDR ?: 'localhost:5000'}"
-    K8S_DEPLOYMENT_PATH = "k8s/deployment.yaml"
-    K8S_SERVICE_PATH = "k8s/service.yaml"
+    // Definir as variáveis
+    KUBECTL      = "${WORKSPACE}/kubectl"
+    NAMESPACE    = "default"
+    CONFIGMAP    = "nginx-html"
+    POD_NAME     = "nginx-server"
+    HTML_REPO    = "https://github.com/richardtsteil/dev.git"
+    HTML_FILE    = "main.html"
+    HOST_PORT    = "8083"
   }
 
   stages {
-    stage('Preparar Workspace') {
-      steps { cleanWs() }
-    }
-
-    stage('Clone Repositório') {
+    stage('Tranferir kubectl') {
       steps {
-        git branch: 'main', url: 'https://github.com/andrerpxavier/Jenkins-lab.git'
+        sh '''
+          curl -sLo "$KUBECTL" \
+            "https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x "$KUBECTL"
+        '''
       }
     }
 
-    stage('Build da imagem Docker') {
+    stage('Rever o HTML') {
+      steps {
+        git url: "${HTML_REPO}", branch: 'master'
+      }
+    }
+
+   stage('Criar o ConfigMap') {
       steps {
         sh """
-          docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-          docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+          kubectl create configmap ${CONFIGMAP} \
+            --from-file=index.html=${HTML_FILE} \
+            --namespace=${NAMESPACE} \
+            --dry-run=client -o yaml > cm.yaml
+
+          kubectl apply -f cm.yaml
         """
       }
     }
 
-    stage('Push para Registry Local') {
+    stage('Deploy nginx Pod') {
       steps {
-        sh "docker push ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+        sh """
+          kubectl delete pod ${POD_NAME} \
+            --namespace=${NAMESPACE} \
+            --ignore-not-found=true
+        """
+
+        writeFile file: 'nginx-hostport-pod.yaml', text: """
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${POD_NAME}
+  namespace: ${NAMESPACE}
+  labels:
+    app: nginx
+spec:
+  containers:
+  - name: nginx
+    image: nginx:stable
+    ports:
+    - containerPort: 80
+      hostPort: ${HOST_PORT}
+    volumeMounts:
+    - name: html
+      mountPath: /usr/share/nginx/html
+  volumes:
+  - name: html
+    configMap:
+      name: ${CONFIGMAP}
+"""
+        sh 'kubectl apply -f nginx-hostport-pod.yaml'
       }
     }
+  }
 
-    stage('Atualizar Deployment Kubernetes') {
-      steps {
-        sh "kubectl apply -f ${K8S_DEPLOYMENT_PATH}"
-        sh "kubectl apply -f ${K8S_SERVICE_PATH}"
+  post {
+    success {
+      script {
+        def nodeName = sh(
+          script: "kubectl get pod ${POD_NAME} -n ${NAMESPACE} -o jsonpath='{.spec.nodeName}'",
+          returnStdout: true
+        ).trim()
+        // get that node's InternalIP
+        def nodeIP = sh(
+          script: "kubectl get node ${nodeName} -o jsonpath='{.status.addresses[?(@.type==\"InternalIP\")].address}'",
+          returnStdout: true
+        ).trim()
+        echo "nginx is running at http://${nodeIP}:${HOST_PORT}"
       }
+    }
+    failure {
+      echo "Deployment failed – check pipeline logs for details."
     }
   }
 }
