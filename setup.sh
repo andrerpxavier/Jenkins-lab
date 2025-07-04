@@ -1,6 +1,9 @@
 
 #!/bin/bash
 set -e
+
+# Calcular IP local apenas uma vez
+REGISTRY_IP=$(hostname -I | awk '{print $1}')
 # ---------------------------
 # Função para instalar Docker
 # ---------------------------
@@ -53,6 +56,21 @@ preparar_cache_docker_rpms() {
     docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
   echo "✅ Cache local criada em $CACHE_DIR"
+}
+
+# ---------------------------
+# Configurar daemon Docker local
+# ---------------------------
+configurar_docker_local() {
+  local ip="$1"
+  mkdir -p /etc/docker
+  cat <<EOF > /etc/docker/daemon.json
+{
+  "insecure-registries": ["localhost:5000", "${ip}:5000"]
+}
+EOF
+  systemctl daemon-reexec
+  systemctl restart docker
 }
 
 configurar_worker() {
@@ -144,6 +162,28 @@ instalar_java() {
   echo "✅ Java instalado com sucesso."
 }
 
+# ---------------------------
+# Esperar por pod em Running
+# ---------------------------
+esperar_pod_running() {
+  local namespace="$1"
+  local label="$2"
+  local timeout="${3:-180}"
+  local waited=0
+  while true; do
+    status=$(kubectl get pod -n "$namespace" -l "$label" -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo Erro)
+    if [[ "$status" == "Running" ]]; then
+      break
+    fi
+    if (( waited >= timeout )); then
+      echo "❌ Timeout ao aguardar pod $label em $namespace"
+      return 1
+    fi
+    sleep 3
+    ((waited+=3))
+  done
+}
+
 # ------------------------------
 # Verificação e instalação base
 # ------------------------------
@@ -169,8 +209,6 @@ fi
 echo "🔎 A detetar workers no cluster Kubernetes..."
 
 preparar_cache_docker_rpms
-
-REGISTRY_IP=$(hostname -I | awk '{print $1}')
 WORKER_NODES=$(kubectl get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[*].metadata.name}')
 
 # Construir a imagem e exportar tarball ANTES de configurar os workers
@@ -184,7 +222,6 @@ fi
 docker run -d --name registry --restart=always -p 5000:5000 registry:2
 
 echo "✅ [2/8] Construindo imagem Jenkins personalizada..."
-REGISTRY_IP=$(hostname -I | awk '{print $1}')
 REGISTRY="${REGISTRY_IP}:5000"
 docker build -t jenkins-autocontido -f Dockerfile.jenkins .
 docker tag jenkins-autocontido:latest ${REGISTRY}/jenkins-autocontido:latest
@@ -205,17 +242,8 @@ for NODE in $WORKER_NODES; do
 done
 
 echo "✅ A configurar Docker para aceitar o registry local e remoto (localhost e IP)..."
-
-cat <<EOF > /etc/docker/daemon.json
-{
-  "insecure-registries": ["localhost:5000", "${REGISTRY_IP}:5000"]
-}
-EOF
-
-systemctl daemon-reexec
-systemctl restart docker
+configurar_docker_local "$REGISTRY_IP"
 sleep 5
-
 echo "✅ Docker configurado com suporte para registry local."
 
 echo "✅ [3/8] A fazer push da imagem jenkins-autocontido para o registry local..."
@@ -309,10 +337,7 @@ echo "✅ PVC ligado ao PV com sucesso."
 echo "🔄 A reiniciar pod do Jenkins para usar a imagem atualizada..."
 kubectl delete pod -n jenkins --all
 echo "⏳ A aguardar que o pod do Jenkins fique em Running..."
-until kubectl get pod -n jenkins -l app=jenkins -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; do
-  kubectl get pods -n jenkins
-  sleep 3
-done
+esperar_pod_running jenkins "app=jenkins"
 
 sleep 40  # Dá tempo ao Jenkins para gerar o ficheiro
 
@@ -320,29 +345,14 @@ instalar_java
 
 
 
-IP=$(hostname -I | awk '{print $1}')
+IP="$REGISTRY_IP"
 #echo -e "\n✅ Jenkins a correr em: http://localhost:8080 ou http://$IP:8080"
 #echo -e "📦 Jenkins Kubernetes exposto via NodePort em: http://$IP:32000 (caso ativado)\n"
 JENKINS_URL="http://$IP:32000"
 NGINX_URL="http://$IP:8083"
 
 echo "⏳ A aguardar que o pod do Jenkins fique em estado Running ..."
-TIMEOUT=180
-SECONDS_WAITED=0
-
-while true; do
-  STATUS=$(kubectl get pod -n jenkins -l app=jenkins -o jsonpath="{.items[0].status.phase}" 2>/dev/null || echo "Erro")
-  if [[ "$STATUS" == "Running" ]]; then
-    echo "✅ Jenkins está em execução."
-    break
-  fi
-  if (( SECONDS_WAITED >= TIMEOUT )); then
-    echo "❌ Timeout: Jenkins não ficou pronto em $TIMEOUT segundos."
-    exit 1
-  fi
-  sleep 3
-  ((SECONDS_WAITED+=3))
-done
+esperar_pod_running jenkins "app=jenkins" 180 && echo "✅ Jenkins está em execução." 
 
 
 ADMIN_POD=$(kubectl get pods -n jenkins -l app=jenkins -o jsonpath="{.items[0].metadata.name}")
