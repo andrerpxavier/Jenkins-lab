@@ -25,7 +25,8 @@ Jenkins-lab/
     ├── sa-jenkins.yaml         # ServiceAccount + RBAC para Jenkins
     ├── volume-jenkins.yaml     # PV e PVC persistentes para Jenkins
     ├── deploy-jenkins.yaml     # Deployment do Jenkins no Kubernetes
-    └── service-jenkins.yaml    # Service NodePort do Jenkins
+    ├── service-jenkins.yaml    # Service NodePort do Jenkins
+    └── nginx-hostport-pod.yaml.template  # Template do Pod nginx usado na pipeline
 ```
 
 ---
@@ -98,36 +99,15 @@ pipeline {
 
     stage('Deploy nginx Pod') {
       steps {
-        sh """
-          kubectl delete pod ${POD_NAME} \
-            --namespace=${NAMESPACE} \
-            --ignore-not-found=true
-        """
-
-        writeFile file: 'nginx-hostport-pod.yaml', text: """
-apiVersion: v1
-kind: Pod
-metadata:
-  name: ${POD_NAME}
-  namespace: ${NAMESPACE}
-  labels:
-    app: nginx
-spec:
-  containers:
-  - name: nginx
-    image: nginx:stable
-    ports:
-    - containerPort: 80
-      hostPort: ${HOST_PORT}
-    volumeMounts:
-    - name: html
-      mountPath: /usr/share/nginx/html
-  volumes:
-  - name: html
-    configMap:
-      name: ${CONFIGMAP}
-"""
-        sh 'kubectl apply -f nginx-hostport-pod.yaml'
+        sh '''
+          kubectl delete pod ${POD_NAME} --namespace=${NAMESPACE} --ignore-not-found=true
+          sed -e "s|__POD_NAME__|${POD_NAME}|g" \
+              -e "s|__NAMESPACE__|${NAMESPACE}|g" \
+              -e "s|__HOST_PORT__|${HOST_PORT}|g" \
+              -e "s|__CONFIGMAP__|${CONFIGMAP}|g" \
+              k8s/nginx-hostport-pod.yaml.template > nginx-hostport-pod.yaml
+          kubectl apply -f nginx-hostport-pod.yaml
+        '''
       }
     }
   }
